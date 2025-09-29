@@ -35,6 +35,7 @@ import {
   Share,
 } from 'lucide-react'
 import Link from 'next/link'
+import { toast } from 'sonner'
 
 interface BrainDump {
   id: string
@@ -105,6 +106,10 @@ export default function DashboardPage() {
     canVote: true,
   })
 
+  // Delete confirmation state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [collaboratorToDelete, setCollaboratorToDelete] = useState<Collaborator | null>(null)
+
   useEffect(() => {
     fetchBrainDumps()
   }, [])
@@ -144,8 +149,15 @@ export default function DashboardPage() {
         ])
         setNewBrainDump({ name: '', description: '', isPublic: false })
         setCreateDialogOpen(false)
+        toast.success(`"${data.brainDump.name}" has been created successfully`)
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        toast.error(
+          errorData.error || 'Failed to create brain dump. Please try again.'
+        )
       }
     } catch (error) {
+      toast.error('An error occurred while creating the brain dump')
       console.error('Error creating brain dump:', error)
     }
   }
@@ -245,14 +257,18 @@ export default function DashboardPage() {
       if (response.ok) {
         // Update the brain dump list to reflect new collaborator count
         await fetchBrainDumps()
+        toast.success(
+          `${removedCollaborator.userName} has been removed from the brain dump`
+        )
       } else {
         // If the request failed, revert the optimistic update
         setCollaborators((prev) => [...prev, removedCollaborator])
-        console.error('Failed to remove collaborator')
+        toast.error('Failed to remove collaborator. Please try again.')
       }
     } catch (error) {
       // If there was an error, revert the optimistic update
       setCollaborators((prev) => [...prev, removedCollaborator])
+      toast.error('An error occurred while removing the collaborator')
       console.error('Error removing collaborator:', error)
     }
   }
@@ -281,8 +297,15 @@ export default function DashboardPage() {
         setShareEmail('')
         setShareDialogOpen(false)
         await fetchBrainDumps() // Refresh to show updated collaborator count
+        toast.success(`Brain dump shared with ${shareEmail}`)
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        toast.error(
+          errorData.error || 'Failed to share brain dump. Please try again.'
+        )
       }
     } catch (error) {
+      toast.error('An error occurred while sharing the brain dump')
       console.error('Error sharing brain dump:', error)
     }
   }
@@ -853,24 +876,24 @@ export default function DashboardPage() {
         open={manageCollaboratorsOpen}
         onOpenChange={setManageCollaboratorsOpen}
       >
-        <DialogContent className="max-w-2xl mx-4 sm:mx-auto">
-          <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg">
+        <DialogContent className="max-w-2xl mx-2 sm:mx-4 lg:mx-auto max-h-[85vh] overflow-y-auto">
+          <DialogHeader className="pb-4">
+            <DialogTitle className="text-lg sm:text-xl">
               Manage Collaborators
             </DialogTitle>
-            <DialogDescription className="text-sm">
+            <DialogDescription className="text-sm text-gray-600">
               Manage users who have access to &quot;
               {selectedBrainDump?.name}&quot;
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4 max-h-[50vh] overflow-y-auto">
             {loadingCollaborators ? (
-              <div className="text-center py-4 text-sm">
+              <div className="text-center py-6 text-sm">
                 Loading collaborators...
               </div>
             ) : collaborators.length === 0 ? (
-              <div className="text-center py-4 text-gray-500 text-sm">
+              <div className="text-center py-6 text-gray-500 text-sm">
                 No collaborators yet. Use the Share button to invite users.
               </div>
             ) : (
@@ -878,29 +901,50 @@ export default function DashboardPage() {
                 {collaborators.map((collaborator) => (
                   <div
                     key={collaborator.userId}
-                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 border rounded-lg space-y-3 sm:space-y-0"
+                    className="p-3 sm:p-4 border rounded-lg bg-gray-50/50 space-y-3"
                   >
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">
-                        {collaborator.userName}
+                    {/* User Info */}
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1 min-w-0 pr-2">
+                        <div className="font-medium text-sm sm:text-base truncate">
+                          {collaborator.userName}
+                        </div>
+                        <div className="text-xs sm:text-sm text-gray-500 truncate">
+                          {collaborator.userEmail}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          Invited{' '}
+                          {new Date(
+                            collaborator.invitedAt
+                          ).toLocaleDateString()}
+                        </div>
                       </div>
-                      <div className="text-xs sm:text-sm text-gray-500 truncate">
-                        {collaborator.userEmail}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">
-                        Invited{' '}
-                        {new Date(collaborator.invitedAt).toLocaleDateString()}
-                      </div>
+
+                      {/* Remove Button - Top Right on Mobile */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setCollaboratorToDelete(collaborator)
+                          setDeleteConfirmOpen(true)
+                        }}
+                        className="p-2 h-8 w-8 text-slate-400 hover:text-rose-600 flex-shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
-                      {/* Permissions Row */}
-                      <div className="flex items-center space-x-4">
+                    {/* Permissions - Full Width on Mobile */}
+                    <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-6">
+                      <div className="text-xs font-medium text-gray-700 sm:hidden">
+                        Permissions:
+                      </div>
+
+                      <div className="flex items-center space-x-4 sm:space-x-6">
                         {/* Edit Permission */}
-                        <div className="flex items-center space-x-1">
+                        <label className="flex items-center space-x-2 cursor-pointer">
                           <input
                             type="checkbox"
-                            id={`edit-${collaborator.userId}`}
                             checked={collaborator.canEdit}
                             disabled={
                               updatingPermissions === collaborator.userId
@@ -912,29 +956,27 @@ export default function DashboardPage() {
                                 collaborator.canVote
                               )
                             }
-                            className={`rounded ${
+                            className={`w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 ${
                               updatingPermissions === collaborator.userId
-                                ? 'opacity-50'
+                                ? 'opacity-50 cursor-not-allowed'
                                 : ''
                             }`}
                           />
-                          <Label
-                            htmlFor={`edit-${collaborator.userId}`}
-                            className={`text-xs ${
+                          <span
+                            className={`text-sm ${
                               updatingPermissions === collaborator.userId
                                 ? 'opacity-50'
                                 : ''
                             }`}
                           >
                             Can Edit
-                          </Label>
-                        </div>
+                          </span>
+                        </label>
 
                         {/* Vote Permission */}
-                        <div className="flex items-center space-x-1">
+                        <label className="flex items-center space-x-2 cursor-pointer">
                           <input
                             type="checkbox"
-                            id={`vote-${collaborator.userId}`}
                             checked={collaborator.canVote}
                             disabled={
                               updatingPermissions === collaborator.userId
@@ -946,42 +988,23 @@ export default function DashboardPage() {
                                 e.target.checked
                               )
                             }
-                            className={`rounded ${
+                            className={`w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 ${
                               updatingPermissions === collaborator.userId
-                                ? 'opacity-50'
+                                ? 'opacity-50 cursor-not-allowed'
                                 : ''
                             }`}
                           />
-                          <Label
-                            htmlFor={`vote-${collaborator.userId}`}
-                            className={`text-xs ${
+                          <span
+                            className={`text-sm ${
                               updatingPermissions === collaborator.userId
                                 ? 'opacity-50'
                                 : ''
                             }`}
                           >
                             Can Vote
-                          </Label>
-                        </div>
+                          </span>
+                        </label>
                       </div>
-
-                      {/* Remove Button */}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          if (
-                            confirm(
-                              `Remove ${collaborator.userName} from this brain dump?`
-                            )
-                          ) {
-                            removeCollaborator(collaborator.userId)
-                          }
-                        }}
-                        className="p-1 h-6 w-6 text-slate-400 hover:text-rose-600 self-end sm:self-center"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
                     </div>
                   </div>
                 ))}
@@ -989,13 +1012,55 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div className="flex justify-end pt-2">
+          <div className="flex justify-end pt-4 border-t mt-4">
             <Button
               variant="outline"
               onClick={() => setManageCollaboratorsOpen(false)}
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto px-6 py-2"
             >
               Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="max-w-md mx-4 sm:mx-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-gray-900">
+              Remove Collaborator
+            </DialogTitle>
+            <DialogDescription className="text-sm text-gray-600">
+              Are you sure you want to remove{' '}
+              <span className="font-medium">{collaboratorToDelete?.userName}</span>{' '}
+              from this brain dump? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 sm:justify-end pt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteConfirmOpen(false)
+                setCollaboratorToDelete(null)
+              }}
+              className="w-full sm:w-auto"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (collaboratorToDelete) {
+                  removeCollaborator(collaboratorToDelete.userId)
+                  setDeleteConfirmOpen(false)
+                  setCollaboratorToDelete(null)
+                }
+              }}
+              className="w-full sm:w-auto bg-red-600 hover:bg-red-700"
+            >
+              Remove
             </Button>
           </div>
         </DialogContent>
