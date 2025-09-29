@@ -92,7 +92,7 @@ export default function BrainDumpPage() {
   const params = useParams()
   const router = useRouter()
   const { data: session } = useSession()
-  const user = session?.user as any
+  const user = session?.user
   const [brainDump, setBrainDump] = useState<BrainDump | null>(null)
   const [items, setItems] = useState<BrainDumpItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -163,7 +163,7 @@ export default function BrainDumpPage() {
         setBrainDump(data.brainDump)
 
         // Set user permissions based on brain dump data
-        if (user && data.brainDump.ownerId === user.id) {
+        if (user && data.brainDump.ownerId === (user as any).id) {
           setUserPermissions({
             canEdit: true,
             canVote: true,
@@ -657,7 +657,7 @@ export default function BrainDumpPage() {
     )
   }
 
-  const isOwner = brainDump.ownerId === user?.id
+  const isOwner = brainDump.ownerId === (user as any)?.id
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1424,7 +1424,7 @@ export default function BrainDumpPage() {
                         </Button>
 
                         {/* Delete button - only show for item owners or brain dump owners */}
-                        {(item.createdById === user?.id || isOwner) && (
+                        {(item.createdById === (user as any)?.id || isOwner) && (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -1523,7 +1523,7 @@ export default function BrainDumpPage() {
                                       )}
                                   </span>
                                   {/* Edit/Delete buttons for comment owner */}
-                                  {comment.createdById === user?.id && (
+                                  {comment.createdById === (user as any)?.id && (
                                     <div className="flex items-center space-x-1">
                                       <Button
                                         size="sm"
