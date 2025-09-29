@@ -8,7 +8,7 @@ import { authOptions } from '@/lib/nextauth';
 // Delete an item
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -18,7 +18,7 @@ export async function DELETE(
     
     const userId = (session.user as any).id;
 
-    const itemId = params.id;
+    const { id: itemId } = await params;
 
     // Check if user has permission to delete this item
     // They can delete if they created the item OR they own the brain dump

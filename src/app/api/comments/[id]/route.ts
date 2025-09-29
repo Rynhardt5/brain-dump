@@ -8,7 +8,7 @@ import { authOptions } from '@/lib/nextauth';
 // Update a comment
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -17,7 +17,7 @@ export async function PATCH(
     }
     
     const userId = (session.user as any).id;
-    const commentId = params.id;
+    const { id: commentId } = await params;
     const { content } = await request.json();
 
     if (!content?.trim()) {
@@ -61,7 +61,7 @@ export async function PATCH(
 // Delete a comment
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -70,7 +70,7 @@ export async function DELETE(
     }
     
     const userId = (session.user as any).id;
-    const commentId = params.id;
+    const { id: commentId } = await params;
 
     // Check if the comment exists and user owns it
     const [existingComment] = await db
