@@ -1,103 +1,226 @@
-import Image from "next/image";
+'use client'
+
+import Link from 'next/link'
+import { useSession, signOut } from 'next-auth/react'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Brain,
+  Users,
+  Vote,
+  Share,
+  LogOut,
+  LayoutDashboard,
+} from 'lucide-react'
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const { data: session, status } = useSession()
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const handleLogout = async () => {
+    await signOut({ callbackUrl: '/' })
+  }
+
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg">Loading...</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Header */}
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center">
+              <Brain className="w-8 h-8 text-blue-600 mr-2" />
+              <h1 className="text-2xl font-bold text-gray-900">Brain Dump</h1>
+            </div>
+            <div className="flex items-center space-x-4">
+              {session?.user ? (
+                <>
+                  <div className="flex items-center space-x-3">
+                    <span className="text-sm text-gray-600">
+                      Welcome back,{' '}
+                      <span className="font-medium">
+                        {session.user.name || session.user.email}
+                      </span>
+                    </span>
+                  </div>
+                  <Link href="/dashboard">
+                    <Button
+                      variant="ghost"
+                      className="flex items-center space-x-2"
+                    >
+                      <LayoutDashboard className="w-4 h-4" />
+                      <span>Dashboard</span>
+                    </Button>
+                  </Link>
+                  <Button
+                    variant="outline"
+                    onClick={handleLogout}
+                    className="flex items-center space-x-2"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Logout</span>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Link href="/auth/signin">
+                    <Button variant="ghost">Sign In</Button>
+                  </Link>
+                  <Link href="/auth/signin">
+                    <Button>Get Started</Button>
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
         </div>
+      </header>
+
+      {/* Hero Section */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 h-screen">
+        <div className="text-center">
+          {session?.user ? (
+            <>
+              <h1 className="text-4xl font-bold text-gray-900 sm:text-6xl">
+                Welcome back to
+                <span className="text-blue-600"> Brain Dump</span>
+              </h1>
+              <p className="mt-6 text-xl text-gray-600 max-w-3xl mx-auto">
+                Ready to continue organizing your thoughts? Access your
+                dashboard to manage your brain dumps and collaborate with your
+                team.
+              </p>
+              <div className="mt-10 flex justify-center space-x-4">
+                <Link href="/dashboard">
+                  <Button
+                    size="lg"
+                    className="px-8 py-3 flex items-center space-x-2"
+                  >
+                    <LayoutDashboard className="w-5 h-5" />
+                    <span>Go to Dashboard</span>
+                  </Button>
+                </Link>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="px-8 py-3 flex items-center space-x-2"
+                  onClick={handleLogout}
+                >
+                  <LogOut className="w-5 h-5" />
+                  <span>Logout</span>
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h1 className="text-4xl font-bold text-gray-900 sm:text-6xl">
+                Collaborative Todo Lists
+                <span className="text-blue-600"> with Priority Voting</span>
+              </h1>
+              <p className="mt-6 text-xl text-gray-600 max-w-3xl mx-auto">
+                Create brain dumps, share them with your team, and let everyone
+                vote on priorities. See what matters most to your group and get
+                things done together.
+              </p>
+              <div className="mt-10 flex justify-center space-x-4">
+                <Link href="/auth/signin">
+                  <Button size="lg" className="px-8 py-3">
+                    Start Brain Dumping
+                  </Button>
+                </Link>
+                <Link href="/auth/signin">
+                  <Button variant="outline" size="lg" className="px-8 py-3">
+                    Sign In
+                  </Button>
+                </Link>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Features */}
+        <div className="mt-20">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <Card className="text-center">
+              <CardHeader>
+                <Users className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+                <CardTitle>Collaborative</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription>
+                  Share your brain dumps with team members and collaborate on
+                  tasks together.
+                </CardDescription>
+              </CardContent>
+            </Card>
+
+            <Card className="text-center">
+              <CardHeader>
+                <Vote className="w-12 h-12 text-green-600 mx-auto mb-4" />
+                <CardTitle>Priority Voting</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription>
+                  Let your team vote on task priorities to surface what&apos;s
+                  most important to everyone.
+                </CardDescription>
+              </CardContent>
+            </Card>
+
+            <Card className="text-center">
+              <CardHeader>
+                <Share className="w-12 h-12 text-purple-600 mx-auto mb-4" />
+                <CardTitle>Easy Sharing</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription>
+                  Share brain dumps with specific permissions - view only, edit,
+                  or voting rights.
+                </CardDescription>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* CTA Section */}
+        {!session?.user && (
+          <div className="mt-20 text-center">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              Ready to organize your thoughts?
+            </h2>
+            <p className="text-xl text-gray-600 mb-8">
+              Join thousands of teams using Brain Dump to prioritize and
+              collaborate.
+            </p>
+            <Link href="/auth/signin">
+              <Button size="lg" className="px-8 py-3">
+                Create Your First Brain Dump
+              </Button>
+            </Link>
+          </div>
+        )}
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+
+      {/* Footer */}
+      <footer className="bg-white border-t mt-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center text-gray-600">
+            <p>&copy; 2024 Brain Dump. Built with Next.js and love.</p>
+          </div>
+        </div>
       </footer>
     </div>
-  );
+  )
 }
