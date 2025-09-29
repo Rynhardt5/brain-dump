@@ -756,8 +756,8 @@ export default function DashboardPage() {
                 href={`/brain-dump/${brainDump.id}`}
                 className="block"
               >
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                  <CardHeader className="pb-2">
+                <Card className="hover:shadow-lg transition-shadow cursor-pointer pt-3 pb-0">
+                  <CardHeader className="pb-2 px-3">
                     <div className="flex justify-between items-start gap-2">
                       <CardTitle className="text-sm sm:text-base leading-tight flex-1 min-w-0">
                         <span className="line-clamp-1">{brainDump.name}</span>
@@ -812,7 +812,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="pt-0 pb-3">
+                  <CardContent className="pt-0 pb-3 px-3">
                     <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
                       <div className="flex items-center">
                         <Users className="w-3 h-3 mr-1" />

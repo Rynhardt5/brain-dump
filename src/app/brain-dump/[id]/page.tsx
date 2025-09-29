@@ -1220,9 +1220,9 @@ export default function BrainDumpPage() {
                   selectedItem === item.id
                     ? 'ring-2 ring-purple-200 border-purple-200'
                     : ''
-                } gap-1`}
+                } gap-1 p-3`}
               >
-                <CardHeader className="pb-3">
+                <CardHeader className="pb-3 px-1">
                   <div className="space-y-2">
                     {/* Title Row - Mobile: Title + Priority, Desktop: Title + Badges */}
                     <div className="flex justify-between items-start">
@@ -1345,7 +1345,7 @@ export default function BrainDumpPage() {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="pt-0">
+                <CardContent className="pt-0 px-1">
                   {/* Mobile-First Layout */}
                   <div className="space-y-3">
                     {/* Meta Info */}
