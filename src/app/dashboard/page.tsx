@@ -33,9 +33,11 @@ import {
   Settings,
   Trash2,
   Share,
+  Loader2,
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { motion, AnimatePresence } from 'framer-motion'
 
 interface BrainDump {
   id: string
@@ -81,7 +83,9 @@ export default function DashboardPage() {
   const [filterType, setFilterType] = useState<
     'all' | 'owned' | 'shared' | 'public'
   >('all')
-  const [sortBy, setSortBy] = useState<'name' | 'created' | 'updated'>()
+  const [sortBy, setSortBy] = useState<'name' | 'created' | 'updated'>(
+    'updated'
+  )
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   // Collaborator management state
@@ -108,7 +112,16 @@ export default function DashboardPage() {
 
   // Delete confirmation state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const [collaboratorToDelete, setCollaboratorToDelete] = useState<Collaborator | null>(null)
+  const [collaboratorToDelete, setCollaboratorToDelete] =
+    useState<Collaborator | null>(null)
+  
+  // Loading states
+  const [isCreating, setIsCreating] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  
+  // Animation state
+  const [isReordering, setIsReordering] = useState(false)
 
   useEffect(() => {
     fetchBrainDumps()
@@ -134,6 +147,7 @@ export default function DashboardPage() {
 
   const createBrainDump = async (e: React.FormEvent) => {
     e.preventDefault()
+    setIsCreating(true)
     try {
       const response = await fetch('/api/brain-dumps', {
         method: 'POST',
@@ -159,6 +173,8 @@ export default function DashboardPage() {
     } catch (error) {
       toast.error('An error occurred while creating the brain dump')
       console.error('Error creating brain dump:', error)
+    } finally {
+      setIsCreating(false)
     }
   }
 
@@ -233,11 +249,15 @@ export default function DashboardPage() {
   const removeCollaborator = async (collaboratorUserId: string) => {
     if (!selectedBrainDump) return
 
+    setIsDeleting(true)
     // Store the collaborator for potential rollback
     const removedCollaborator = collaborators.find(
       (c) => c.userId === collaboratorUserId
     )
-    if (!removedCollaborator) return
+    if (!removedCollaborator) {
+      setIsDeleting(false)
+      return
+    }
 
     // Optimistic update - immediately remove from UI
     setCollaborators((prev) =>
@@ -270,6 +290,8 @@ export default function DashboardPage() {
       setCollaborators((prev) => [...prev, removedCollaborator])
       toast.error('An error occurred while removing the collaborator')
       console.error('Error removing collaborator:', error)
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -283,6 +305,7 @@ export default function DashboardPage() {
     e.preventDefault()
     if (!selectedBrainDump) return
 
+    setIsSharing(true)
     try {
       const response = await fetch(
         `/api/brain-dumps/${selectedBrainDump.id}/share`,
@@ -307,7 +330,25 @@ export default function DashboardPage() {
     } catch (error) {
       toast.error('An error occurred while sharing the brain dump')
       console.error('Error sharing brain dump:', error)
+    } finally {
+      setIsSharing(false)
     }
+  }
+
+  const handleSortChange = (newSortBy: 'name' | 'created' | 'updated') => {
+    console.log('Sort change triggered:', newSortBy, 'isReordering:', true)
+    setIsReordering(true)
+    if (sortBy === newSortBy) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortBy(newSortBy)
+      setSortOrder('desc')
+    }
+    // Reset animation state after a brief delay
+    setTimeout(() => {
+      console.log('Animation reset')
+      setIsReordering(false)
+    }, 600)
   }
 
   // Filter and sort brain dumps
@@ -397,7 +438,7 @@ export default function DashboardPage() {
                     New Brain Dump
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="w-[90vw] sm:w-auto mx-auto max-w-md sm:max-w-lg">
                   <DialogHeader>
                     <DialogTitle>Create New Brain Dump</DialogTitle>
                     <DialogDescription>
@@ -459,7 +500,16 @@ export default function DashboardPage() {
                       >
                         Cancel
                       </Button>
-                      <Button type="submit">Create</Button>
+                      <Button type="submit" disabled={isCreating}>
+                        {isCreating ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          'Create'
+                        )}
+                      </Button>
                     </div>
                   </form>
                 </DialogContent>
@@ -490,7 +540,7 @@ export default function DashboardPage() {
                   New Brain Dump
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="w-[90vw] sm:w-auto mx-auto max-w-md sm:max-w-lg">
                 <DialogHeader>
                   <DialogTitle>Create New Brain Dump</DialogTitle>
                   <DialogDescription>
@@ -549,7 +599,16 @@ export default function DashboardPage() {
                     >
                       Cancel
                     </Button>
-                    <Button type="submit">Create</Button>
+                    <Button type="submit" disabled={isCreating}>
+                      {isCreating ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        'Create'
+                      )}
+                    </Button>
                   </div>
                 </form>
               </DialogContent>
@@ -557,7 +616,7 @@ export default function DashboardPage() {
 
             {/* Share Dialog */}
             <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
-              <DialogContent className="max-w-md mx-4 sm:mx-auto">
+              <DialogContent className="max-w-md w-[90vw] sm:w-auto mx-auto">
                 <DialogHeader>
                   <DialogTitle className="text-base sm:text-lg">
                     Share Brain Dump
@@ -622,7 +681,16 @@ export default function DashboardPage() {
                     >
                       Cancel
                     </Button>
-                    <Button type="submit">Share</Button>
+                    <Button type="submit" disabled={isSharing}>
+                      {isSharing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Sharing...
+                        </>
+                      ) : (
+                        'Share'
+                      )}
+                    </Button>
                   </div>
                 </form>
               </DialogContent>
@@ -699,7 +767,7 @@ export default function DashboardPage() {
                       variant="outline"
                       size="sm"
                       onClick={() =>
-                        setSortBy(
+                        handleSortChange(
                           option.value as 'name' | 'created' | 'updated'
                         )
                       }
@@ -712,20 +780,27 @@ export default function DashboardPage() {
                       {option.label}
                     </Button>
                   ))}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
-                    }
-                    className="text-slate-600 hover:bg-slate-50 border-slate-200 flex-shrink-0"
+                  <motion.div
+                    animate={isReordering ? { rotate: 360 } : { rotate: 0 }}
+                    transition={{ duration: 0.5, ease: "easeInOut" }}
                   >
-                    {sortOrder === 'asc' ? (
-                      <SortAsc className="w-4 h-4" />
-                    ) : (
-                      <SortDesc className="w-4 h-4" />
-                    )}
-                  </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleSortChange(sortBy)}
+                      className={`text-slate-600 hover:bg-slate-50 border-slate-200 flex-shrink-0 ${
+                        isReordering ? 'bg-blue-50 border-blue-200' : ''
+                      }`}
+                      disabled={isReordering}
+                    >
+                      {isReordering ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : sortOrder === 'asc' ? (
+                        <SortAsc className="w-4 h-4" />
+                      ) : (
+                        <SortDesc className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </motion.div>
                 </div>
               </div>
             </div>
@@ -772,13 +847,32 @@ export default function DashboardPage() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-            {filteredAndSortedBrainDumps.map((brainDump) => (
-              <Link
-                key={brainDump.id}
-                href={`/brain-dump/${brainDump.id}`}
-                className="block"
-              >
+          <motion.div 
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6"
+            layout
+          >
+            <AnimatePresence mode="popLayout">
+              {filteredAndSortedBrainDumps.map((brainDump, index) => (
+                <motion.div
+                  key={brainDump.id}
+                  layout
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ 
+                    opacity: 1, 
+                    y: 0,
+                    transition: {
+                      duration: 0.3,
+                      delay: isReordering ? index * 0.05 : 0
+                    }
+                  }}
+                  exit={{ opacity: 0, y: -20, transition: { duration: 0.2 } }}
+                  whileHover={{ y: -2, transition: { duration: 0.2 } }}
+                  className="block"
+                >
+                  <Link
+                    href={`/brain-dump/${brainDump.id}`}
+                    className="block"
+                  >
                 <Card className="hover:shadow-lg transition-shadow cursor-pointer pt-3 pb-0">
                   <CardHeader className="pb-2 px-3">
                     <div className="flex justify-between items-start gap-2">
@@ -866,9 +960,11 @@ export default function DashboardPage() {
                     </div>
                   </CardContent>
                 </Card>
-              </Link>
-            ))}
-          </div>
+                  </Link>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </motion.div>
         )}
       </main>
       {/* Manage Collaborators Dialog */}
@@ -876,7 +972,7 @@ export default function DashboardPage() {
         open={manageCollaboratorsOpen}
         onOpenChange={setManageCollaboratorsOpen}
       >
-        <DialogContent className="max-w-2xl mx-2 sm:mx-4 lg:mx-auto max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl w-[95vw] sm:w-auto mx-auto max-h-[85vh] overflow-y-auto">
           <DialogHeader className="pb-4">
             <DialogTitle className="text-lg sm:text-xl">
               Manage Collaborators
@@ -1026,18 +1122,20 @@ export default function DashboardPage() {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <DialogContent className="max-w-md mx-4 sm:mx-auto">
+        <DialogContent className="max-w-md w-[90vw] sm:w-auto mx-auto">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold text-gray-900">
               Remove Collaborator
             </DialogTitle>
             <DialogDescription className="text-sm text-gray-600">
               Are you sure you want to remove{' '}
-              <span className="font-medium">{collaboratorToDelete?.userName}</span>{' '}
+              <span className="font-medium">
+                {collaboratorToDelete?.userName}
+              </span>{' '}
               from this brain dump? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 sm:justify-end pt-4">
             <Button
               variant="outline"
@@ -1051,6 +1149,7 @@ export default function DashboardPage() {
             </Button>
             <Button
               variant="destructive"
+              disabled={isDeleting}
               onClick={() => {
                 if (collaboratorToDelete) {
                   removeCollaborator(collaboratorToDelete.userId)
@@ -1060,7 +1159,14 @@ export default function DashboardPage() {
               }}
               className="w-full sm:w-auto bg-red-600 hover:bg-red-700"
             >
-              Remove
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                'Remove'
+              )}
             </Button>
           </div>
         </DialogContent>

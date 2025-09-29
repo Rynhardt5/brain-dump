@@ -39,6 +39,7 @@ import {
   Calendar,
 } from 'lucide-react'
 import Link from 'next/link'
+import { motion, AnimatePresence } from 'framer-motion'
 
 interface BrainDumpItem {
   id: string
@@ -153,6 +154,10 @@ export default function BrainDumpPage() {
     canVote: true,
   })
 
+  // Animation state
+  const [stagingItem, setStagingItem] = useState<BrainDumpItem | null>(null)
+  const [isStaging, setIsStaging] = useState(false)
+
   const brainDumpId = params.id as string
 
   const fetchBrainDump = useCallback(async () => {
@@ -249,9 +254,20 @@ export default function BrainDumpPage() {
 
       if (response.ok) {
         const data = await response.json()
-        setItems([...items, data.item])
+        const newItem = data.item
+
+        // Stage the item at the top first
+        setStagingItem(newItem)
+        setIsStaging(true)
         setQuickItemText('')
         setQuickItemPriority(3) // Reset to High priority
+
+        // After 1.5 seconds, move it to the sorted list
+        setTimeout(() => {
+          setItems([...items, newItem])
+          setStagingItem(null)
+          setIsStaging(false)
+        }, 1500)
       }
     } catch (error) {
       console.error('Error creating item:', error)
@@ -631,14 +647,21 @@ export default function BrainDumpPage() {
       return true
     })
     .sort((a, b) => {
-      // Sort by priority (High to Low)
-      const priorityDiff = getPriorityScore(b) - getPriorityScore(a)
-      if (priorityDiff !== 0) {
-        return priorityDiff
+      // 1. Completed items go to the bottom
+      if (a.isCompleted !== b.isCompleted) {
+        return a.isCompleted ? 1 : -1
       }
 
-      // Within same priority, sort by creation date (oldest first)
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      // 2. For non-completed items, sort by creation date (oldest first)
+      const dateDiff =
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      if (dateDiff !== 0) {
+        return dateDiff
+      }
+
+      // 3. Within same date, sort by priority (highest to lowest)
+      const priorityDiff = getPriorityScore(b) - getPriorityScore(a)
+      return priorityDiff
     })
 
   if (loading) {
@@ -1213,434 +1236,795 @@ export default function BrainDumpPage() {
           </div>
         ) : (
           <div className="space-y-3 sm:space-y-4">
-            {filteredAndSortedItems.map((item: BrainDumpItem) => (
-              <Card
-                key={item.id}
-                className={`${item.isCompleted ? 'opacity-60' : ''} ${
-                  selectedItem === item.id
-                    ? 'ring-2 ring-purple-200 border-purple-200'
-                    : ''
-                } gap-1 p-3`}
-              >
-                <CardHeader className="pb-3 px-1">
-                  <div className="space-y-2">
-                    {/* Title Row - Mobile: Title + Priority, Desktop: Title + Badges */}
-                    <div className="flex justify-between items-start">
-                      {/* Title and Edit Mode */}
-                      <div className="flex-1 min-w-0 pr-2">
-                        {editingItem === item.id ? (
-                          <div className="space-y-3">
-                            <Textarea
-                              value={editItemText}
-                              onChange={(e) => setEditItemText(e.target.value)}
-                              className="flex-1 min-h-[80px] resize-none"
-                              placeholder="Edit item title and description..."
-                              onKeyDown={(e) => {
-                                if (
-                                  e.key === 'Enter' &&
-                                  (e.ctrlKey || e.metaKey)
-                                ) {
-                                  updateItem(item.id, editItemText)
-                                } else if (e.key === 'Escape') {
-                                  cancelEditing()
-                                }
-                              }}
-                            />
-                            <div className="flex items-center space-x-2">
-                              <Button
-                                size="sm"
-                                onClick={() =>
-                                  updateItem(item.id, editItemText)
-                                }
-                                className="px-3"
-                              >
-                                <Check className="w-4 h-4 mr-1" />
-                                Save
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={cancelEditing}
-                                className="px-3"
-                              >
-                                <X className="w-4 h-4 mr-1" />
-                                Cancel
-                              </Button>
-                              <span className="text-xs text-gray-500 ml-auto">
-                                Ctrl+Enter to save, Esc to cancel
-                              </span>
-                            </div>
-                          </div>
-                        ) : (
-                          <CardTitle
-                            className={`text-base sm:text-lg leading-tight ${
-                              item.isCompleted
-                                ? 'line-through text-gray-500'
-                                : 'text-gray-900'
-                            }`}
-                          >
-                            {item.title}
-                          </CardTitle>
-                        )}
-                        {item.description && (
-                          <CardDescription className="mt-1 text-sm">
-                            {item.description}
-                          </CardDescription>
-                        )}
-                      </div>
-
-                      {/* Mobile Priority Badge - Right side */}
-                      <div className="sm:hidden flex-shrink-0">
-                        <Badge
-                          className={`text-xs ${
-                            priorityLabels[
-                              Math.round(
-                                getPriorityScore(item)
-                              ) as keyof typeof priorityLabels
-                            ].color
-                          }`}
-                        >
-                          {
-                            priorityLabels[
-                              Math.round(
-                                getPriorityScore(item)
-                              ) as keyof typeof priorityLabels
-                            ].label
-                          }
-                          {item.voteCount && item.voteCount > 0 && (
-                            <span className="ml-1">
-                              ({item.voteCount} vote
-                              {item.voteCount <= 1 ? '' : 's'})
-                            </span>
-                          )}
-                        </Badge>
-                      </div>
-
-                      {/* Desktop Priority Badges - Top Right */}
-                      <div className="hidden sm:flex items-center space-x-2 ml-4 flex-shrink-0">
-                        <Badge
-                          className={`text-xs ${
-                            priorityLabels[
-                              Math.round(
-                                getPriorityScore(item)
-                              ) as keyof typeof priorityLabels
-                            ].color
-                          }`}
-                        >
-                          {
-                            priorityLabels[
-                              Math.round(
-                                getPriorityScore(item)
-                              ) as keyof typeof priorityLabels
-                            ].label
-                          }
-                        </Badge>
-                        {item.voteCount > 0 && (
-                          <Badge variant="outline" className="text-xs">
-                            {item.voteCount} vote
-                            {item.voteCount <= 1 ? '' : 's'}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
+            {/* Staging Area - New item appears here first */}
+            <AnimatePresence>
+              {stagingItem && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                  animate={{
+                    opacity: 1,
+                    y: 0,
+                    scale: 1,
+                    transition: { duration: 0.4, ease: 'easeOut' },
+                  }}
+                  exit={{
+                    opacity: 0,
+                    y: 20,
+                    scale: 0.95,
+                    transition: { duration: 0.3 },
+                  }}
+                  className="relative"
+                >
+                  {/* Subtle staging indicator */}
+                  <div className="absolute -top-1 -left-1 -right-1 -bottom-1 bg-blue-50 rounded-lg border border-blue-200" />
+                  <div className="absolute top-1 right-1 bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded font-medium z-10 opacity-90">
+                    New
                   </div>
-                </CardHeader>
-                <CardContent className="pt-0 px-1">
-                  {/* Mobile-First Layout */}
-                  <div className="space-y-3">
-                    {/* Meta Info */}
-                    <div className="text-xs sm:text-sm text-gray-500">
-                      <span className="hidden sm:inline">
-                        Created by{' '}
-                        <span className="font-medium">
-                          {item.createdByName}
-                        </span>{' '}
-                        on{' '}
-                        {new Date(item.createdAt).toLocaleDateString('en-US', {
-                          weekday: 'short',
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                        })}
-                        {item.updatedAt !== item.createdAt && (
-                          <span className="ml-2">
-                            • Last updated{' '}
-                            {new Date(item.updatedAt).toLocaleDateString(
+                  <Card
+                    className={`relative bg-white border-blue-100 gap-1 p-3 ${
+                      stagingItem.isCompleted ? 'opacity-60' : ''
+                    } ${
+                      selectedItem === stagingItem.id
+                        ? 'ring-2 ring-purple-200 border-purple-200'
+                        : ''
+                    }`}
+                  >
+                    <CardHeader className="pb-3 px-1">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1 min-w-0 pr-2">
+                            <CardTitle className="text-base sm:text-lg leading-tight text-gray-900">
+                              {stagingItem.title}
+                            </CardTitle>
+                            {stagingItem.description && (
+                              <CardDescription className="mt-1 text-sm">
+                                {stagingItem.description}
+                              </CardDescription>
+                            )}
+                          </div>
+
+                          {/* Mobile Priority Badge - Right side */}
+                          <div className="sm:hidden flex-shrink-0">
+                            <Badge
+                              className={`text-xs ${
+                                priorityLabels[
+                                  Math.round(
+                                    getPriorityScore(stagingItem)
+                                  ) as keyof typeof priorityLabels
+                                ].color
+                              }`}
+                            >
+                              {
+                                priorityLabels[
+                                  Math.round(
+                                    getPriorityScore(stagingItem)
+                                  ) as keyof typeof priorityLabels
+                                ].label
+                              }
+                              {stagingItem.voteCount &&
+                                stagingItem.voteCount > 0 && (
+                                  <span className="ml-1">
+                                    ({stagingItem.voteCount} vote
+                                    {stagingItem.voteCount <= 1 ? '' : 's'})
+                                  </span>
+                                )}
+                            </Badge>
+                          </div>
+
+                          {/* Desktop Priority Badges - Top Right */}
+                          <div className="hidden sm:flex items-center space-x-2 ml-4 flex-shrink-0">
+                            <Badge
+                              className={`text-xs ${
+                                priorityLabels[
+                                  Math.round(
+                                    getPriorityScore(stagingItem)
+                                  ) as keyof typeof priorityLabels
+                                ].color
+                              }`}
+                            >
+                              {
+                                priorityLabels[
+                                  Math.round(
+                                    getPriorityScore(stagingItem)
+                                  ) as keyof typeof priorityLabels
+                                ].label
+                              }
+                            </Badge>
+                            {stagingItem.voteCount > 0 && (
+                              <Badge variant="outline" className="text-xs">
+                                {stagingItem.voteCount} vote
+                                {stagingItem.voteCount <= 1 ? '' : 's'}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0 px-1">
+                      {/* Mobile-First Layout */}
+                      <div className="space-y-3">
+                        {/* Meta Info */}
+                        <div className="text-xs sm:text-sm text-gray-500">
+                          <span className="hidden sm:inline">
+                            Created by{' '}
+                            <span className="font-medium">
+                              {stagingItem.createdByName}
+                            </span>{' '}
+                            on{' '}
+                            {new Date(stagingItem.createdAt).toLocaleDateString(
                               'en-US',
                               {
+                                weekday: 'short',
+                                year: 'numeric',
                                 month: 'short',
                                 day: 'numeric',
                               }
                             )}
+                            {stagingItem.updatedAt !==
+                              stagingItem.createdAt && (
+                              <span className="ml-2">
+                                • Last updated{' '}
+                                {new Date(
+                                  stagingItem.updatedAt
+                                ).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                })}
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </span>
-                      <span className="sm:hidden">
-                        {item.createdByName} •{' '}
-                        {new Date(item.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
-
-                    {/* Action Row - Responsive Design */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-3 sm:space-y-0">
-                      {/* Left Actions */}
-                      <div className="flex items-center space-x-1 sm:space-x-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() =>
-                            toggleCompleteItem(item.id, item.isCompleted)
-                          }
-                          className={`p-2 sm:px-3 ${
-                            item.isCompleted
-                              ? 'text-emerald-700 bg-emerald-50 border border-emerald-200'
-                              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-700'
-                          }`}
-                        >
-                          <Check className="w-4 h-4 sm:mr-2" />
-                          <span className=" sm:inline">
-                            {item.isCompleted ? 'Completed' : 'Mark Complete'}
+                          <span className="sm:hidden">
+                            {stagingItem.createdByName} •{' '}
+                            {new Date(
+                              stagingItem.createdAt
+                            ).toLocaleDateString()}
                           </span>
-                        </Button>
+                        </div>
 
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => startEditing(item)}
-                          className="p-2 sm:px-3 text-slate-600 hover:bg-slate-50 hover:text-slate-700"
-                        >
-                          <Edit className="w-4 h-4 sm:mr-2" />
-                          <span className=" sm:inline">Edit</span>
-                        </Button>
+                        {/* Action Row - Responsive Design */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-3 sm:space-y-0">
+                          {/* Left Actions */}
+                          <div className="flex items-center space-x-1 sm:space-x-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                toggleCompleteItem(
+                                  stagingItem.id,
+                                  stagingItem.isCompleted
+                                )
+                              }
+                              className={`p-2 sm:px-3 ${
+                                stagingItem.isCompleted
+                                  ? 'text-emerald-700 bg-emerald-50 border border-emerald-200'
+                                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-700'
+                              }`}
+                            >
+                              <Check className="w-4 h-4 sm:mr-2" />
+                              <span className=" sm:inline">
+                                {stagingItem.isCompleted
+                                  ? 'Completed'
+                                  : 'Mark Complete'}
+                              </span>
+                            </Button>
 
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleItemSelect(item.id)}
-                          className="p-2 sm:px-3 text-slate-600 hover:bg-slate-50 hover:text-slate-700 relative"
-                        >
-                          <MessageSquare className="w-4 h-4 sm:mr-2" />
-                          <span className="hidden sm:inline">
-                            Comments
-                            {item.commentCount && item.commentCount > 0
-                              ? ` (${item.commentCount})`
-                              : ''}
-                          </span>
-                          {/* Comment indicator dot - Mobile only */}
-                          {item.commentCount && item.commentCount > 0 && (
-                            <div className="absolute -top-1 -right-1 w-2 h-2 bg-slate-400 rounded-full sm:hidden"></div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => startEditing(stagingItem)}
+                              className="p-2 sm:px-3 text-slate-600 hover:bg-slate-50 hover:text-slate-700"
+                            >
+                              <Edit className="w-4 h-4 sm:mr-2" />
+                              <span className=" sm:inline">Edit</span>
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleItemSelect(stagingItem.id)}
+                              className="p-2 sm:px-3 text-slate-600 hover:bg-slate-50 hover:text-slate-700 relative"
+                            >
+                              <MessageSquare className="w-4 h-4 sm:mr-2" />
+                              <span className="hidden sm:inline">
+                                Comments
+                                {stagingItem.commentCount &&
+                                stagingItem.commentCount > 0
+                                  ? ` (${stagingItem.commentCount})`
+                                  : ''}
+                              </span>
+                              {/* Comment indicator dot - Mobile only */}
+                              {stagingItem.commentCount &&
+                                stagingItem.commentCount > 0 && (
+                                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-slate-400 rounded-full sm:hidden"></div>
+                                )}
+                            </Button>
+
+                            {/* Delete button - only show for item owners or brain dump owners */}
+                            {(stagingItem.createdById === (user as any)?.id ||
+                              isOwner) && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  openDeleteItemDialog(stagingItem.id)
+                                }
+                                className="p-2 sm:px-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                              >
+                                <Trash2 className="w-4 h-4 sm:mr-2" />
+                                <span className="hidden sm:inline">Delete</span>
+                              </Button>
+                            )}
+                          </div>
+
+                          {/* Priority Voting - Enhanced for Desktop - Only show if user can vote */}
+                          {userPermissions.canVote && (
+                            <div className="flex items-center space-x-1 sm:space-x-2">
+                              <span className="text-xs text-gray-500 mr-2 hidden sm:inline">
+                                Vote Priority:
+                              </span>
+                              <div className="flex items-center space-x-1 sm:space-x-1 bg-slate-50 border border-slate-200 rounded-lg p-1 w-full sm:w-auto">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => voteOnItem(stagingItem.id, 3)}
+                                  className="flex-1 sm:flex-none p-1.5 sm:px-3 text-rose-700 hover:bg-rose-50 hover:text-rose-800 rounded"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5 sm:mr-1" />
+                                  <span className=" sm:inline text-xs">
+                                    High
+                                  </span>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => voteOnItem(stagingItem.id, 2)}
+                                  className="flex-1 sm:flex-none p-1.5 sm:px-3 text-amber-700 hover:bg-amber-50 hover:text-amber-800 rounded"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5 sm:mr-1" />
+                                  <span className=" sm:inline text-xs">
+                                    Medium
+                                  </span>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => voteOnItem(stagingItem.id, 1)}
+                                  className="flex-1 sm:flex-none p-1.5 sm:px-3 text-slate-600 hover:bg-slate-100 hover:text-slate-700 rounded"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5 sm:mr-1" />
+                                  <span className=" sm:inline text-xs">
+                                    Low
+                                  </span>
+                                </Button>
+                              </div>
+                            </div>
                           )}
-                        </Button>
-
-                        {/* Delete button - only show for item owners or brain dump owners */}
-                        {(item.createdById === (user as any)?.id ||
-                          isOwner) && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => openDeleteItemDialog(item.id)}
-                            className="p-2 sm:px-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                          >
-                            <Trash2 className="w-4 h-4 sm:mr-2" />
-                            <span className="hidden sm:inline">Delete</span>
-                          </Button>
-                        )}
+                        </div>
                       </div>
 
-                      {/* Priority Voting - Enhanced for Desktop - Only show if user can vote */}
-                      {userPermissions.canVote && (
-                        <div className="flex items-center space-x-1 sm:space-x-2">
-                          <span className="text-xs text-gray-500 mr-2 hidden sm:inline">
-                            Vote Priority:
-                          </span>
-                          <div className="flex items-center space-x-1 sm:space-x-1 bg-slate-50 border border-slate-200 rounded-lg p-1 w-full sm:w-auto">
+                      {/* Comments Section */}
+                      {selectedItem === stagingItem.id && (
+                        <div className="mt-4 pt-4 border-t">
+                          <div className="flex justify-between items-center mb-3">
+                            <h4 className="font-medium">Comments</h4>
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => voteOnItem(item.id, 3)}
-                              className="flex-1 sm:flex-none p-1.5 sm:px-3 text-rose-700 hover:bg-rose-50 hover:text-rose-800 rounded"
+                              onClick={() => {
+                                setSelectedItem(null)
+                                setComments([])
+                              }}
+                              className="p-1 h-6 w-6 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
                             >
-                              <ChevronUp className="w-3.5 h-3.5 sm:mr-1" />
-                              <span className=" sm:inline text-xs">High</span>
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => voteOnItem(item.id, 2)}
-                              className="flex-1 sm:flex-none p-1.5 sm:px-3 text-amber-700 hover:bg-amber-50 hover:text-amber-800 rounded"
-                            >
-                              <ChevronUp className="w-3.5 h-3.5 sm:mr-1" />
-                              <span className=" sm:inline text-xs">Medium</span>
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => voteOnItem(item.id, 1)}
-                              className="flex-1 sm:flex-none p-1.5 sm:px-3 text-slate-600 hover:bg-slate-100 hover:text-slate-700 rounded"
-                            >
-                              <ChevronDown className="w-3.5 h-3.5 sm:mr-1" />
-                              <span className=" sm:inline text-xs">Low</span>
+                              <X className="w-4 h-4" />
                             </Button>
                           </div>
+                          <div className="space-y-3 mb-4">
+                            {comments.length === 0 ? (
+                              <p className="text-gray-500 text-sm">
+                                No comments yet. Be the first to comment!
+                              </p>
+                            ) : (
+                              comments.map((comment) => (
+                                <div
+                                  key={comment.id}
+                                  className="bg-gray-50 rounded-lg p-3"
+                                >
+                                  {/* Comment content would go here - same as regular items */}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault()
+                              if (newComment.trim()) {
+                                addComment(stagingItem.id, newComment.trim())
+                              }
+                            }}
+                            className="flex space-x-2"
+                          >
+                            <Input
+                              placeholder="Add a comment..."
+                              value={newComment}
+                              onChange={(e) => setNewComment(e.target.value)}
+                              className="flex-1"
+                            />
+                            <Button
+                              type="submit"
+                              size="sm"
+                              disabled={!newComment.trim()}
+                            >
+                              Comment
+                            </Button>
+                          </form>
                         </div>
                       )}
-                    </div>
-                  </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-                  {/* Comments Section */}
-                  {selectedItem === item.id && (
-                    <div className="mt-4 pt-4 border-t">
-                      <div className="flex justify-between items-center mb-3">
-                        <h4 className="font-medium">Comments</h4>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setSelectedItem(null)
-                            setComments([])
-                          }}
-                          className="p-1 h-6 w-6 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                      <div className="space-y-3 mb-4">
-                        {comments.length === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No comments yet. Be the first to comment!
-                          </p>
-                        ) : (
-                          comments.map((comment) => (
-                            <div
-                              key={comment.id}
-                              className="bg-gray-50 rounded-lg p-3"
-                            >
-                              <div className="flex justify-between items-start mb-2">
-                                <span className="font-medium text-sm">
-                                  {comment.createdByName}
-                                </span>
+            {/* Regular items list with animations */}
+            <AnimatePresence mode="popLayout">
+              {filteredAndSortedItems.map((item: BrainDumpItem, index) => (
+                <motion.div
+                  key={item.id}
+                  layout
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{
+                    opacity: 1,
+                    y: 0,
+                    transition: {
+                      duration: 0.3,
+                      delay: index * 0.05,
+                    },
+                  }}
+                  exit={{ opacity: 0, y: -20, transition: { duration: 0.2 } }}
+                >
+                  <Card
+                    key={item.id}
+                    className={`${item.isCompleted ? 'opacity-60' : ''} ${
+                      selectedItem === item.id
+                        ? 'ring-2 ring-purple-200 border-purple-200'
+                        : ''
+                    } gap-1 p-3`}
+                  >
+                    <CardHeader className="pb-3 px-1">
+                      <div className="space-y-2">
+                        {/* Title Row - Mobile: Title + Priority, Desktop: Title + Badges */}
+                        <div className="flex justify-between items-start">
+                          {/* Title and Edit Mode */}
+                          <div className="flex-1 min-w-0 pr-2">
+                            {editingItem === item.id ? (
+                              <div className="space-y-3">
+                                <Textarea
+                                  value={editItemText}
+                                  onChange={(e) =>
+                                    setEditItemText(e.target.value)
+                                  }
+                                  className="flex-1 min-h-[80px] resize-none"
+                                  placeholder="Edit item title and description..."
+                                  onKeyDown={(e) => {
+                                    if (
+                                      e.key === 'Enter' &&
+                                      (e.ctrlKey || e.metaKey)
+                                    ) {
+                                      updateItem(item.id, editItemText)
+                                    } else if (e.key === 'Escape') {
+                                      cancelEditing()
+                                    }
+                                  }}
+                                />
                                 <div className="flex items-center space-x-2">
-                                  <span className="text-xs text-gray-500">
-                                    {new Date(
-                                      comment.createdAt
-                                    ).toLocaleDateString()}
-                                    {comment.updatedAt &&
-                                      comment.updatedAt !==
-                                        comment.createdAt && (
-                                        <span className="ml-1 text-gray-400">
-                                          (edited)
-                                        </span>
-                                      )}
+                                  <Button
+                                    size="sm"
+                                    onClick={() =>
+                                      updateItem(item.id, editItemText)
+                                    }
+                                    className="px-3"
+                                  >
+                                    <Check className="w-4 h-4 mr-1" />
+                                    Save
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={cancelEditing}
+                                    className="px-3"
+                                  >
+                                    <X className="w-4 h-4 mr-1" />
+                                    Cancel
+                                  </Button>
+                                  <span className="text-xs text-gray-500 ml-auto">
+                                    Ctrl+Enter to save, Esc to cancel
                                   </span>
-                                  {/* Edit/Delete buttons for comment owner */}
-                                  {comment.createdById ===
-                                    (user as any)?.id && (
-                                    <div className="flex items-center space-x-1">
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() =>
-                                          startEditingComment(comment)
-                                        }
-                                        className="p-1 h-6 w-6 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-                                      >
-                                        <Edit className="w-3 h-3" />
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() =>
-                                          openDeleteCommentDialog(comment)
-                                        }
-                                        className="p-1 h-6 w-6 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </Button>
-                                    </div>
-                                  )}
                                 </div>
                               </div>
+                            ) : (
+                              <CardTitle
+                                className={`text-base sm:text-lg leading-tight ${
+                                  item.isCompleted
+                                    ? 'line-through text-gray-500'
+                                    : 'text-gray-900'
+                                }`}
+                              >
+                                {item.title}
+                              </CardTitle>
+                            )}
+                            {item.description && (
+                              <CardDescription className="mt-1 text-sm">
+                                {item.description}
+                              </CardDescription>
+                            )}
+                          </div>
 
-                              {/* Comment content - editable if editing */}
-                              {editingComment === comment.id ? (
-                                <div className="space-y-2">
-                                  <Input
-                                    value={editCommentText}
-                                    onChange={(e) =>
-                                      setEditCommentText(e.target.value)
-                                    }
-                                    className="text-sm"
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        updateComment(
-                                          comment.id,
-                                          editCommentText
-                                        )
-                                      } else if (e.key === 'Escape') {
-                                        cancelEditingComment()
-                                      }
-                                    }}
-                                  />
-                                  <div className="flex items-center space-x-2">
-                                    <Button
-                                      size="sm"
-                                      onClick={() =>
-                                        updateComment(
-                                          comment.id,
-                                          editCommentText
-                                        )
-                                      }
-                                      className="h-7 px-2 text-xs"
-                                    >
-                                      <Check className="w-3 h-3 mr-1" />
-                                      Save
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={cancelEditingComment}
-                                      className="h-7 px-2 text-xs"
-                                    >
-                                      <X className="w-3 h-3 mr-1" />
-                                      Cancel
-                                    </Button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <p className="text-sm">{comment.content}</p>
+                          {/* Mobile Priority Badge - Right side */}
+                          <div className="sm:hidden flex-shrink-0">
+                            <Badge
+                              className={`text-xs ${
+                                priorityLabels[
+                                  Math.round(
+                                    getPriorityScore(item)
+                                  ) as keyof typeof priorityLabels
+                                ].color
+                              }`}
+                            >
+                              {
+                                priorityLabels[
+                                  Math.round(
+                                    getPriorityScore(item)
+                                  ) as keyof typeof priorityLabels
+                                ].label
+                              }
+                              {item.voteCount && item.voteCount > 0 && (
+                                <span className="ml-1">
+                                  ({item.voteCount} vote
+                                  {item.voteCount <= 1 ? '' : 's'})
+                                </span>
                               )}
-                            </div>
-                          ))
-                        )}
+                            </Badge>
+                          </div>
+
+                          {/* Desktop Priority Badges - Top Right */}
+                          <div className="hidden sm:flex items-center space-x-2 ml-4 flex-shrink-0">
+                            <Badge
+                              className={`text-xs ${
+                                priorityLabels[
+                                  Math.round(
+                                    getPriorityScore(item)
+                                  ) as keyof typeof priorityLabels
+                                ].color
+                              }`}
+                            >
+                              {
+                                priorityLabels[
+                                  Math.round(
+                                    getPriorityScore(item)
+                                  ) as keyof typeof priorityLabels
+                                ].label
+                              }
+                            </Badge>
+                            {item.voteCount > 0 && (
+                              <Badge variant="outline" className="text-xs">
+                                {item.voteCount} vote
+                                {item.voteCount <= 1 ? '' : 's'}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault()
-                          if (newComment.trim()) {
-                            addComment(item.id, newComment.trim())
-                          }
-                        }}
-                        className="flex space-x-2"
-                      >
-                        <Input
-                          placeholder="Add a comment..."
-                          value={newComment}
-                          onChange={(e) => setNewComment(e.target.value)}
-                          className="flex-1"
-                        />
-                        <Button
-                          type="submit"
-                          size="sm"
-                          disabled={!newComment.trim()}
-                        >
-                          Comment
-                        </Button>
-                      </form>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+                    </CardHeader>
+                    <CardContent className="pt-0 px-1">
+                      {/* Mobile-First Layout */}
+                      <div className="space-y-3">
+                        {/* Meta Info */}
+                        <div className="text-xs sm:text-sm text-gray-500">
+                          <span className="hidden sm:inline">
+                            Created by{' '}
+                            <span className="font-medium">
+                              {item.createdByName}
+                            </span>{' '}
+                            on{' '}
+                            {new Date(item.createdAt).toLocaleDateString(
+                              'en-US',
+                              {
+                                weekday: 'short',
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              }
+                            )}
+                            {item.updatedAt !== item.createdAt && (
+                              <span className="ml-2">
+                                • Last updated{' '}
+                                {new Date(item.updatedAt).toLocaleDateString(
+                                  'en-US',
+                                  {
+                                    month: 'short',
+                                    day: 'numeric',
+                                  }
+                                )}
+                              </span>
+                            )}
+                          </span>
+                          <span className="sm:hidden">
+                            {item.createdByName} •{' '}
+                            {new Date(item.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+
+                        {/* Action Row - Responsive Design */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-3 sm:space-y-0">
+                          {/* Left Actions */}
+                          <div className="flex items-center space-x-1 sm:space-x-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                toggleCompleteItem(item.id, item.isCompleted)
+                              }
+                              className={`p-2 sm:px-3 ${
+                                item.isCompleted
+                                  ? 'text-emerald-700 bg-emerald-50 border border-emerald-200'
+                                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-700'
+                              }`}
+                            >
+                              <Check className="w-4 h-4 sm:mr-2" />
+                              <span className=" sm:inline">
+                                {item.isCompleted
+                                  ? 'Completed'
+                                  : 'Mark Complete'}
+                              </span>
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => startEditing(item)}
+                              className="p-2 sm:px-3 text-slate-600 hover:bg-slate-50 hover:text-slate-700"
+                            >
+                              <Edit className="w-4 h-4 sm:mr-2" />
+                              <span className=" sm:inline">Edit</span>
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleItemSelect(item.id)}
+                              className="p-2 sm:px-3 text-slate-600 hover:bg-slate-50 hover:text-slate-700 relative"
+                            >
+                              <MessageSquare className="w-4 h-4 sm:mr-2" />
+                              <span className="hidden sm:inline">
+                                Comments
+                                {item.commentCount && item.commentCount > 0
+                                  ? ` (${item.commentCount})`
+                                  : ''}
+                              </span>
+                              {/* Comment indicator dot - Mobile only */}
+                              {item.commentCount && item.commentCount > 0 && (
+                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-slate-400 rounded-full sm:hidden"></div>
+                              )}
+                            </Button>
+
+                            {/* Delete button - only show for item owners or brain dump owners */}
+                            {(item.createdById === (user as any)?.id ||
+                              isOwner) && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => openDeleteItemDialog(item.id)}
+                                className="p-2 sm:px-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                              >
+                                <Trash2 className="w-4 h-4 sm:mr-2" />
+                                <span className="hidden sm:inline">Delete</span>
+                              </Button>
+                            )}
+                          </div>
+
+                          {/* Priority Voting - Enhanced for Desktop - Only show if user can vote */}
+                          {userPermissions.canVote && (
+                            <div className="flex items-center space-x-1 sm:space-x-2">
+                              <span className="text-xs text-gray-500 mr-2 hidden sm:inline">
+                                Vote Priority:
+                              </span>
+                              <div className="flex items-center space-x-1 sm:space-x-1 bg-slate-50 border border-slate-200 rounded-lg p-1 w-full sm:w-auto">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => voteOnItem(item.id, 3)}
+                                  className="flex-1 sm:flex-none p-1.5 sm:px-3 text-rose-700 hover:bg-rose-50 hover:text-rose-800 rounded"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5 sm:mr-1" />
+                                  <span className=" sm:inline text-xs">
+                                    High
+                                  </span>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => voteOnItem(item.id, 2)}
+                                  className="flex-1 sm:flex-none p-1.5 sm:px-3 text-amber-700 hover:bg-amber-50 hover:text-amber-800 rounded"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5 sm:mr-1" />
+                                  <span className=" sm:inline text-xs">
+                                    Medium
+                                  </span>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => voteOnItem(item.id, 1)}
+                                  className="flex-1 sm:flex-none p-1.5 sm:px-3 text-slate-600 hover:bg-slate-100 hover:text-slate-700 rounded"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5 sm:mr-1" />
+                                  <span className=" sm:inline text-xs">
+                                    Low
+                                  </span>
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Comments Section */}
+                      {selectedItem === item.id && (
+                        <div className="mt-4 pt-4 border-t">
+                          <div className="flex justify-between items-center mb-3">
+                            <h4 className="font-medium">Comments</h4>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setSelectedItem(null)
+                                setComments([])
+                              }}
+                              className="p-1 h-6 w-6 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          <div className="space-y-3 mb-4">
+                            {comments.length === 0 ? (
+                              <p className="text-gray-500 text-sm">
+                                No comments yet. Be the first to comment!
+                              </p>
+                            ) : (
+                              comments.map((comment) => (
+                                <div
+                                  key={comment.id}
+                                  className="bg-gray-50 rounded-lg p-3"
+                                >
+                                  <div className="flex justify-between items-start mb-2">
+                                    <span className="font-medium text-sm">
+                                      {comment.createdByName}
+                                    </span>
+                                    <div className="flex items-center space-x-2">
+                                      <span className="text-xs text-gray-500">
+                                        {new Date(
+                                          comment.createdAt
+                                        ).toLocaleDateString()}
+                                        {comment.updatedAt &&
+                                          comment.updatedAt !==
+                                            comment.createdAt && (
+                                            <span className="ml-1 text-gray-400">
+                                              (edited)
+                                            </span>
+                                          )}
+                                      </span>
+                                      {/* Edit/Delete buttons for comment owner */}
+                                      {comment.createdById ===
+                                        (user as any)?.id && (
+                                        <div className="flex items-center space-x-1">
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() =>
+                                              startEditingComment(comment)
+                                            }
+                                            className="p-1 h-6 w-6 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                                          >
+                                            <Edit className="w-3 h-3" />
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() =>
+                                              openDeleteCommentDialog(comment)
+                                            }
+                                            className="p-1 h-6 w-6 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </Button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Comment content - editable if editing */}
+                                  {editingComment === comment.id ? (
+                                    <div className="space-y-2">
+                                      <Input
+                                        value={editCommentText}
+                                        onChange={(e) =>
+                                          setEditCommentText(e.target.value)
+                                        }
+                                        className="text-sm"
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            updateComment(
+                                              comment.id,
+                                              editCommentText
+                                            )
+                                          } else if (e.key === 'Escape') {
+                                            cancelEditingComment()
+                                          }
+                                        }}
+                                      />
+                                      <div className="flex items-center space-x-2">
+                                        <Button
+                                          size="sm"
+                                          onClick={() =>
+                                            updateComment(
+                                              comment.id,
+                                              editCommentText
+                                            )
+                                          }
+                                          className="h-7 px-2 text-xs"
+                                        >
+                                          <Check className="w-3 h-3 mr-1" />
+                                          Save
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={cancelEditingComment}
+                                          className="h-7 px-2 text-xs"
+                                        >
+                                          <X className="w-3 h-3 mr-1" />
+                                          Cancel
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm">{comment.content}</p>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault()
+                              if (newComment.trim()) {
+                                addComment(item.id, newComment.trim())
+                              }
+                            }}
+                            className="flex space-x-2"
+                          >
+                            <Input
+                              placeholder="Add a comment..."
+                              value={newComment}
+                              onChange={(e) => setNewComment(e.target.value)}
+                              className="flex-1"
+                            />
+                            <Button
+                              type="submit"
+                              size="sm"
+                              disabled={!newComment.trim()}
+                            >
+                              Comment
+                            </Button>
+                          </form>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         )}
       </main>
