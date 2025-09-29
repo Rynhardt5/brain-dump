@@ -37,6 +37,7 @@ import {
   Trash2,
   Search,
   Calendar,
+  Loader2,
 } from 'lucide-react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -131,6 +132,7 @@ export default function BrainDumpPage() {
   // Comments state
   const [selectedItem, setSelectedItem] = useState<string | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
+  const [loadingComments, setLoadingComments] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [editingComment, setEditingComment] = useState<string | null>(null)
   const [editCommentText, setEditCommentText] = useState('')
@@ -157,6 +159,12 @@ export default function BrainDumpPage() {
   // Animation state
   const [stagingItem, setStagingItem] = useState<BrainDumpItem | null>(null)
   const [isStaging, setIsStaging] = useState(false)
+
+  // Voting state
+  const [votingItems, setVotingItems] = useState<Set<string>>(new Set())
+  const [votingPriority, setVotingPriority] = useState<Record<string, number>>(
+    {}
+  )
 
   const brainDumpId = params.id as string
 
@@ -338,6 +346,7 @@ export default function BrainDumpPage() {
 
   // Fetch comments for an item
   const fetchComments = async (itemId: string) => {
+    setLoadingComments(true)
     try {
       const response = await fetch(`/api/items/${itemId}/comments`)
       if (response.ok) {
@@ -346,6 +355,8 @@ export default function BrainDumpPage() {
       }
     } catch (error) {
       console.error('Error fetching comments:', error)
+    } finally {
+      setLoadingComments(false)
     }
   }
 
@@ -463,8 +474,10 @@ export default function BrainDumpPage() {
     if (selectedItem === itemId) {
       setSelectedItem(null)
       setComments([])
+      setLoadingComments(false)
     } else {
       setSelectedItem(itemId)
+      setComments([]) // Clear previous comments immediately
       fetchComments(itemId)
     }
   }
@@ -574,6 +587,10 @@ export default function BrainDumpPage() {
   }
 
   const voteOnItem = async (itemId: string, priority: number) => {
+    // Set loading state
+    setVotingItems((prev) => new Set(prev).add(itemId))
+    setVotingPriority((prev) => ({ ...prev, [itemId]: priority }))
+
     try {
       const response = await fetch(`/api/items/${itemId}/vote`, {
         method: 'POST',
@@ -583,10 +600,22 @@ export default function BrainDumpPage() {
 
       if (response.ok) {
         // Refresh items to get updated vote counts
-        fetchItems()
+        await fetchItems()
       }
     } catch (error) {
       console.error('Error voting on item:', error)
+    } finally {
+      // Clear loading state
+      setVotingItems((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(itemId)
+        return newSet
+      })
+      setVotingPriority((prev) => {
+        const newState = { ...prev }
+        delete newState[itemId]
+        return newState
+      })
     }
   }
 
@@ -652,16 +681,16 @@ export default function BrainDumpPage() {
         return a.isCompleted ? 1 : -1
       }
 
-      // 2. For non-completed items, sort by creation date (oldest first)
-      const dateDiff =
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      if (dateDiff !== 0) {
-        return dateDiff
+      // 2. For non-completed items, sort by priority first (highest to lowest)
+      const priorityDiff = getPriorityScore(b) - getPriorityScore(a)
+      if (priorityDiff !== 0) {
+        return priorityDiff
       }
 
-      // 3. Within same date, sort by priority (highest to lowest)
-      const priorityDiff = getPriorityScore(b) - getPriorityScore(a)
-      return priorityDiff
+      // 3. Within same priority, sort by creation date (oldest first)
+      const dateDiff =
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      return dateDiff
     })
 
   if (loading) {
@@ -1467,10 +1496,21 @@ export default function BrainDumpPage() {
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => voteOnItem(stagingItem.id, 3)}
-                                  className="flex-1 sm:flex-none p-1.5 sm:px-3 text-rose-700 hover:bg-rose-50 hover:text-rose-800 rounded"
+                                  disabled={votingItems.has(stagingItem.id)}
+                                  className={`flex-1 sm:flex-none p-1.5 sm:px-3 text-rose-700 hover:bg-rose-50 hover:text-rose-800 rounded ${
+                                    votingItems.has(stagingItem.id) &&
+                                    votingPriority[stagingItem.id] === 3
+                                      ? 'bg-rose-100 border-rose-300'
+                                      : ''
+                                  }`}
                                 >
-                                  <ChevronUp className="w-3.5 h-3.5 sm:mr-1" />
-                                  <span className=" sm:inline text-xs">
+                                  {votingItems.has(stagingItem.id) &&
+                                  votingPriority[stagingItem.id] === 3 ? (
+                                    <Loader2 className="w-3.5 h-3.5 sm:mr-1 animate-spin" />
+                                  ) : (
+                                    <ChevronUp className="w-3.5 h-3.5 sm:mr-1" />
+                                  )}
+                                  <span className="hidden sm:inline text-xs">
                                     High
                                   </span>
                                 </Button>
@@ -1478,10 +1518,21 @@ export default function BrainDumpPage() {
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => voteOnItem(stagingItem.id, 2)}
-                                  className="flex-1 sm:flex-none p-1.5 sm:px-3 text-amber-700 hover:bg-amber-50 hover:text-amber-800 rounded"
+                                  disabled={votingItems.has(stagingItem.id)}
+                                  className={`flex-1 sm:flex-none p-1.5 sm:px-3 text-amber-700 hover:bg-amber-50 hover:text-amber-800 rounded ${
+                                    votingItems.has(stagingItem.id) &&
+                                    votingPriority[stagingItem.id] === 2
+                                      ? 'bg-amber-100 border-amber-300'
+                                      : ''
+                                  }`}
                                 >
-                                  <ChevronUp className="w-3.5 h-3.5 sm:mr-1" />
-                                  <span className=" sm:inline text-xs">
+                                  {votingItems.has(stagingItem.id) &&
+                                  votingPriority[stagingItem.id] === 2 ? (
+                                    <Loader2 className="w-3.5 h-3.5 sm:mr-1 animate-spin" />
+                                  ) : (
+                                    <ChevronUp className="w-3.5 h-3.5 sm:mr-1" />
+                                  )}
+                                  <span className="hidden sm:inline text-xs">
                                     Medium
                                   </span>
                                 </Button>
@@ -1489,10 +1540,21 @@ export default function BrainDumpPage() {
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => voteOnItem(stagingItem.id, 1)}
-                                  className="flex-1 sm:flex-none p-1.5 sm:px-3 text-slate-600 hover:bg-slate-100 hover:text-slate-700 rounded"
+                                  disabled={votingItems.has(stagingItem.id)}
+                                  className={`flex-1 sm:flex-none p-1.5 sm:px-3 text-slate-600 hover:bg-slate-100 hover:text-slate-700 rounded ${
+                                    votingItems.has(stagingItem.id) &&
+                                    votingPriority[stagingItem.id] === 1
+                                      ? 'bg-slate-200 border-slate-400'
+                                      : ''
+                                  }`}
                                 >
-                                  <ChevronDown className="w-3.5 h-3.5 sm:mr-1" />
-                                  <span className=" sm:inline text-xs">
+                                  {votingItems.has(stagingItem.id) &&
+                                  votingPriority[stagingItem.id] === 1 ? (
+                                    <Loader2 className="w-3.5 h-3.5 sm:mr-1 animate-spin" />
+                                  ) : (
+                                    <ChevronDown className="w-3.5 h-3.5 sm:mr-1" />
+                                  )}
+                                  <span className="hidden sm:inline text-xs">
                                     Low
                                   </span>
                                 </Button>
@@ -1571,7 +1633,7 @@ export default function BrainDumpPage() {
               {filteredAndSortedItems.map((item: BrainDumpItem, index) => (
                 <motion.div
                   key={item.id}
-                  layout
+                  layout="position"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{
                     opacity: 1,
@@ -1834,9 +1896,20 @@ export default function BrainDumpPage() {
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => voteOnItem(item.id, 3)}
-                                  className="flex-1 sm:flex-none p-1.5 sm:px-3 text-rose-700 hover:bg-rose-50 hover:text-rose-800 rounded"
+                                  disabled={votingItems.has(item.id)}
+                                  className={`flex-1 sm:flex-none p-1.5 sm:px-3 text-rose-700 hover:bg-rose-50 hover:text-rose-800 rounded ${
+                                    votingItems.has(item.id) &&
+                                    votingPriority[item.id] === 3
+                                      ? 'bg-rose-100 border-rose-300'
+                                      : ''
+                                  }`}
                                 >
-                                  <ChevronUp className="w-3.5 h-3.5 sm:mr-1" />
+                                  {votingItems.has(item.id) &&
+                                  votingPriority[item.id] === 3 ? (
+                                    <Loader2 className="w-3.5 h-3.5 sm:mr-1 animate-spin" />
+                                  ) : (
+                                    <ChevronUp className="w-3.5 h-3.5 sm:mr-1" />
+                                  )}
                                   <span className=" sm:inline text-xs">
                                     High
                                   </span>
@@ -1845,9 +1918,20 @@ export default function BrainDumpPage() {
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => voteOnItem(item.id, 2)}
-                                  className="flex-1 sm:flex-none p-1.5 sm:px-3 text-amber-700 hover:bg-amber-50 hover:text-amber-800 rounded"
+                                  disabled={votingItems.has(item.id)}
+                                  className={`flex-1 sm:flex-none p-1.5 sm:px-3 text-amber-700 hover:bg-amber-50 hover:text-amber-800 rounded ${
+                                    votingItems.has(item.id) &&
+                                    votingPriority[item.id] === 2
+                                      ? 'bg-amber-100 border-amber-300'
+                                      : ''
+                                  }`}
                                 >
-                                  <ChevronUp className="w-3.5 h-3.5 sm:mr-1" />
+                                  {votingItems.has(item.id) &&
+                                  votingPriority[item.id] === 2 ? (
+                                    <Loader2 className="w-3.5 h-3.5 sm:mr-1 animate-spin" />
+                                  ) : (
+                                    <ChevronUp className="w-3.5 h-3.5 sm:mr-1" />
+                                  )}
                                   <span className=" sm:inline text-xs">
                                     Medium
                                   </span>
@@ -1856,9 +1940,20 @@ export default function BrainDumpPage() {
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => voteOnItem(item.id, 1)}
-                                  className="flex-1 sm:flex-none p-1.5 sm:px-3 text-slate-600 hover:bg-slate-100 hover:text-slate-700 rounded"
+                                  disabled={votingItems.has(item.id)}
+                                  className={`flex-1 sm:flex-none p-1.5 sm:px-3 text-slate-600 hover:bg-slate-100 hover:text-slate-700 rounded ${
+                                    votingItems.has(item.id) &&
+                                    votingPriority[item.id] === 1
+                                      ? 'bg-slate-200 border-slate-400'
+                                      : ''
+                                  }`}
                                 >
-                                  <ChevronDown className="w-3.5 h-3.5 sm:mr-1" />
+                                  {votingItems.has(item.id) &&
+                                  votingPriority[item.id] === 1 ? (
+                                    <Loader2 className="w-3.5 h-3.5 sm:mr-1 animate-spin" />
+                                  ) : (
+                                    <ChevronDown className="w-3.5 h-3.5 sm:mr-1" />
+                                  )}
                                   <span className=" sm:inline text-xs">
                                     Low
                                   </span>
