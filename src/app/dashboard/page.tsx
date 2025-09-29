@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
+import PWAInstallButton from '@/components/PWAInstallButton'
 import {
   Card,
   CardContent,
@@ -514,6 +515,7 @@ export default function DashboardPage() {
                   </form>
                 </DialogContent>
               </Dialog>
+              <PWAInstallButton />
               <Button variant="outline" onClick={logOut}>
                 Logout
               </Button>
@@ -527,9 +529,12 @@ export default function DashboardPage() {
                 <h1 className="text-2xl font-bold text-gray-900">Brain Dump</h1>
                 <p className="text-gray-600">Welcome back, {user?.name}</p>
               </div>
-              <Button variant="outline" onClick={logOut}>
-                Logout
-              </Button>
+              <div className="flex items-center space-x-2">
+                <PWAInstallButton />
+                <Button variant="outline" onClick={logOut}>
+                  Logout
+                </Button>
+              </div>
             </div>
 
             {/* Full width New Brain Dump button */}

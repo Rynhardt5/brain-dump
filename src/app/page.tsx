@@ -5,6 +5,7 @@ import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
+import PWAInstallButton from '@/components/PWAInstallButton'
 import {
   Card,
   CardContent,
@@ -93,6 +94,7 @@ export default function Home() {
                 </>
               ) : (
                 <>
+                  <PWAInstallButton />
                   <Link href="/auth/signin">
                     <Button variant="ghost" size="sm">Sign In</Button>
                   </Link>
