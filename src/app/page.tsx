@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { useSession, signOut } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -17,10 +19,24 @@ import {
   Share,
   LogOut,
   LayoutDashboard,
+  Plus,
+  MessageSquare,
+  ChevronUp,
+  ChevronDown,
+  UserPlus,
+  CheckCircle,
 } from 'lucide-react'
 
 export default function Home() {
   const { data: session, status } = useSession()
+  const router = useRouter()
+
+  // Redirect logged-in users to dashboard
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user) {
+      router.push('/dashboard')
+    }
+  }, [status, session, router])
 
   const handleLogout = async () => {
     await signOut({ callbackUrl: '/' })
@@ -195,6 +211,186 @@ export default function Home() {
             </Card>
           </div>
         </div>
+
+        {/* How to Use Section */}
+        {!session?.user && (
+          <div className="mt-16 sm:mt-24 px-4">
+            <div className="text-center mb-8 sm:mb-12">
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-3 sm:mb-4">
+                How to Use Brain Dump
+              </h2>
+              <p className="text-base sm:text-xl text-gray-600 max-w-3xl mx-auto">
+                Get started in minutes with our simple, collaborative workflow
+              </p>
+            </div>
+
+            <div className="max-w-4xl mx-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+                {/* Step 1 */}
+                <Card className="relative overflow-hidden">
+                  <div className="absolute top-4 left-4 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                    1
+                  </div>
+                  <CardHeader className="pt-16 pb-4">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Plus className="w-5 h-5 text-blue-600" />
+                      <CardTitle className="text-lg sm:text-xl">Create a Brain Dump</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <CardDescription className="text-sm sm:text-base mb-4">
+                      Start by creating a new brain dump for your project, meeting, or idea collection.
+                    </CardDescription>
+                    <div className="bg-gray-50 rounded-lg p-3 text-xs sm:text-sm text-gray-700">
+                      <strong>Example:</strong> "Sprint Planning Ideas" or "Marketing Campaign Tasks"
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Step 2 */}
+                <Card className="relative overflow-hidden">
+                  <div className="absolute top-4 left-4 w-8 h-8 bg-green-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                    2
+                  </div>
+                  <CardHeader className="pt-16 pb-4">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Plus className="w-5 h-5 text-green-600" />
+                      <CardTitle className="text-lg sm:text-xl">Add Items</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <CardDescription className="text-sm sm:text-base mb-4">
+                      Quickly add tasks, ideas, or topics to your brain dump. No need to organize yet!
+                    </CardDescription>
+                    <div className="bg-gray-50 rounded-lg p-3 text-xs sm:text-sm text-gray-700">
+                      <strong>Tip:</strong> Just brain dump everything first, organize later
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Step 3 */}
+                <Card className="relative overflow-hidden">
+                  <div className="absolute top-4 left-4 w-8 h-8 bg-purple-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                    3
+                  </div>
+                  <CardHeader className="pt-16 pb-4">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <UserPlus className="w-5 h-5 text-purple-600" />
+                      <CardTitle className="text-lg sm:text-xl">Share & Collaborate</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <CardDescription className="text-sm sm:text-base mb-4">
+                      Share your brain dump with team members and set their permissions.
+                    </CardDescription>
+                    <div className="bg-gray-50 rounded-lg p-3 text-xs sm:text-sm text-gray-700">
+                      <strong>Permissions:</strong> View only, Edit, or Vote on priorities
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Step 4 */}
+                <Card className="relative overflow-hidden">
+                  <div className="absolute top-4 left-4 w-8 h-8 bg-orange-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                    4
+                  </div>
+                  <CardHeader className="pt-16 pb-4">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <div className="flex items-center space-x-1">
+                        <ChevronUp className="w-4 h-4 text-orange-600" />
+                        <ChevronDown className="w-4 h-4 text-orange-600" />
+                      </div>
+                      <CardTitle className="text-lg sm:text-xl">Vote on Priorities</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <CardDescription className="text-sm sm:text-base mb-4">
+                      Team members vote on item priorities: High, Medium, or Low.
+                    </CardDescription>
+                    <div className="bg-gray-50 rounded-lg p-3 text-xs sm:text-sm text-gray-700">
+                      <strong>Result:</strong> Items automatically sort by team consensus
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Step 5 */}
+                <Card className="relative overflow-hidden">
+                  <div className="absolute top-4 left-4 w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                    5
+                  </div>
+                  <CardHeader className="pt-16 pb-4">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <MessageSquare className="w-5 h-5 text-indigo-600" />
+                      <CardTitle className="text-lg sm:text-xl">Discuss & Comment</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <CardDescription className="text-sm sm:text-base mb-4">
+                      Add comments to items for clarification, updates, or discussion.
+                    </CardDescription>
+                    <div className="bg-gray-50 rounded-lg p-3 text-xs sm:text-sm text-gray-700">
+                      <strong>Feature:</strong> Real-time collaboration and feedback
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Step 6 */}
+                <Card className="relative overflow-hidden">
+                  <div className="absolute top-4 left-4 w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                    6
+                  </div>
+                  <CardHeader className="pt-16 pb-4">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <CheckCircle className="w-5 h-5 text-emerald-600" />
+                      <CardTitle className="text-lg sm:text-xl">Complete & Track</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <CardDescription className="text-sm sm:text-base mb-4">
+                      Mark items as complete and track your team's progress over time.
+                    </CardDescription>
+                    <div className="bg-gray-50 rounded-lg p-3 text-xs sm:text-sm text-gray-700">
+                      <strong>Benefit:</strong> Clear visibility into what's done and what's next
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Quick Tips */}
+              <div className="mt-8 sm:mt-12 bg-blue-50 rounded-xl p-6 sm:p-8">
+                <h3 className="text-lg sm:text-xl font-semibold text-blue-900 mb-4 text-center">
+                  💡 Pro Tips for Success
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm sm:text-base">
+                  <div className="flex items-start space-x-2">
+                    <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
+                    <p className="text-blue-800">
+                      <strong>Start messy:</strong> Don't worry about organization initially - just get everything out of your head
+                    </p>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
+                    <p className="text-blue-800">
+                      <strong>Invite early:</strong> Get your team involved from the beginning for better buy-in
+                    </p>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
+                    <p className="text-blue-800">
+                      <strong>Vote honestly:</strong> Encourage authentic priority voting for better decisions
+                    </p>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
+                    <p className="text-blue-800">
+                      <strong>Review regularly:</strong> Check in on progress and adjust priorities as needed
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* CTA Section */}
         {!session?.user && (
