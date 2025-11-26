@@ -183,7 +183,6 @@ export default function BrainDumpPage() {
 
   // Animation state
   const [stagingItem, setStagingItem] = useState<BrainDumpItem | null>(null)
-  const [isStaging, setIsStaging] = useState(false)
 
   // Voting state
   const [votingItems, setVotingItems] = useState<Set<string>>(new Set())
@@ -289,76 +288,80 @@ export default function BrainDumpPage() {
       return
     }
 
-    try {
-      const PusherClient = require('pusher-js')
-      const pusher = new PusherClient(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
-        cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
-      })
-
-      // Log connection state changes
-      pusher.connection.bind('state_change', (states: any) => {
-        console.log('🔌 Pusher connection state:', states.current)
-      })
-
-      pusher.connection.bind('connected', () => {
-        console.log('✅ Pusher connected successfully!')
-      })
-
-      pusher.connection.bind('error', (err: any) => {
-        console.error('❌ Pusher connection error:', err)
-      })
-
-      const channel = pusher.subscribe(`brain-dump-${brainDumpId}`)
-
-      channel.bind('pusher:subscription_succeeded', () => {
-        console.log('✅ Subscribed to brain-dump channel:', brainDumpId)
-      })
-
-      // Handle new items
-      channel.bind('item-created', (data: any) => {
-        console.log('🆕 Real-time: New item received', data)
-        setItems((prev) => {
-          const exists = prev.find((item) => item.id === data.id)
-          if (exists) return prev
-          return [...prev, data]
+    // Use async IIFE to handle dynamic import
+    ;(async () => {
+      try {
+        const PusherModule = await import('pusher-js')
+        const PusherClient = PusherModule.default
+        const pusher = new PusherClient(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
+          cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
         })
-      })
 
-      // Handle vote updates
-      channel.bind('vote-updated', (data: any) => {
-        console.log('🗳️ Real-time: Vote update received', data)
-        setItems((prev) =>
-          prev.map((item) =>
-            item.id === data.id ? { ...item, ...data } : item
+        // Log connection state changes
+        pusher.connection.bind('state_change', (states: any) => {
+          console.log('🔌 Pusher connection state:', states.current)
+        })
+
+        pusher.connection.bind('connected', () => {
+          console.log('✅ Pusher connected successfully!')
+        })
+
+        pusher.connection.bind('error', (err: any) => {
+          console.error('❌ Pusher connection error:', err)
+        })
+
+        const channel = pusher.subscribe(`brain-dump-${brainDumpId}`)
+
+        channel.bind('pusher:subscription_succeeded', () => {
+          console.log('✅ Subscribed to brain-dump channel:', brainDumpId)
+        })
+
+        // Handle new items
+        channel.bind('item-created', (data: any) => {
+          console.log('🆕 Real-time: New item received', data)
+          setItems((prev) => {
+            const exists = prev.find((item) => item.id === data.id)
+            if (exists) return prev
+            return [...prev, data]
+          })
+        })
+
+        // Handle vote updates
+        channel.bind('vote-updated', (data: any) => {
+          console.log('🗳️ Real-time: Vote update received', data)
+          setItems((prev) =>
+            prev.map((item) =>
+              item.id === data.id ? { ...item, ...data } : item
+            )
           )
-        )
-      })
+        })
 
-      // Handle item updates
-      channel.bind('item-updated', (data: any) => {
-        console.log('📝 Real-time: Item update received', data)
-        setItems((prev) =>
-          prev.map((item) =>
-            item.id === data.id ? { ...item, ...data } : item
+        // Handle item updates
+        channel.bind('item-updated', (data: any) => {
+          console.log('📝 Real-time: Item update received', data)
+          setItems((prev) =>
+            prev.map((item) =>
+              item.id === data.id ? { ...item, ...data } : item
+            )
           )
-        )
-      })
+        })
 
-      // Handle item deletions
-      channel.bind('item-deleted', (data: { itemId: string }) => {
-        console.log('🗑️ Real-time: Item deletion received', data)
-        setItems((prev) => prev.filter((item) => item.id !== data.itemId))
-      })
+        // Handle item deletions
+        channel.bind('item-deleted', (data: { itemId: string }) => {
+          console.log('🗑️ Real-time: Item deletion received', data)
+          setItems((prev) => prev.filter((item) => item.id !== data.itemId))
+        })
 
-      return () => {
-        channel.unbind_all()
-        channel.unsubscribe()
-        pusher.disconnect()
-        console.log('🔌 Pusher disconnected')
+        return () => {
+          channel.unbind_all()
+          channel.unsubscribe()
+          pusher.disconnect()
+          console.log('🔌 Pusher disconnected')
+        }
+      } catch (error) {
+        console.error('❌ Failed to initialize Pusher:', error)
       }
-    } catch (error) {
-      console.error('❌ Failed to initialize Pusher:', error)
-    }
+    })() // Close and immediately invoke the async IIFE
   }, [brainDumpId])
 
   // Quick add item function
@@ -385,15 +388,13 @@ export default function BrainDumpPage() {
 
         // Stage the item at the top first
         setStagingItem(newItem)
-        setIsStaging(true)
         setQuickItemText('')
         setQuickItemPriority(3) // Reset to High priority
 
-        // After 1.5 seconds, move it to the sorted list
+        // After a delay, move it to the real list
         setTimeout(() => {
           setItems([...items, newItem])
           setStagingItem(null)
-          setIsStaging(false)
         }, 1500)
       }
     } catch (error) {
@@ -565,7 +566,6 @@ export default function BrainDumpPage() {
       )
 
       if (response.ok) {
-        const data = await response.json()
         setItems((prev) =>
           prev.map((item) =>
             item.id === itemId
@@ -943,6 +943,7 @@ export default function BrainDumpPage() {
         }
       })
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items])
 
   // Calculate checklist progress
@@ -1914,7 +1915,14 @@ export default function BrainDumpPage() {
                             </Button>
                           </div>
                           <div className="space-y-3 mb-4">
-                            {comments.length === 0 ? (
+                            {loadingComments ? (
+                              <div className="flex items-center justify-center py-8">
+                                <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                                <span className="ml-2 text-sm text-gray-500">
+                                  Loading comments...
+                                </span>
+                              </div>
+                            ) : comments.length === 0 ? (
                               <p className="text-gray-500 text-sm">
                                 No comments yet. Be the first to comment!
                               </p>
@@ -2490,7 +2498,14 @@ export default function BrainDumpPage() {
                             </Button>
                           </div>
                           <div className="space-y-3 mb-4">
-                            {comments.length === 0 ? (
+                            {loadingComments ? (
+                              <div className="flex items-center justify-center py-8">
+                                <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                                <span className="ml-2 text-sm text-gray-500">
+                                  Loading comments...
+                                </span>
+                              </div>
+                            ) : comments.length === 0 ? (
                               <p className="text-gray-500 text-sm">
                                 No comments yet. Be the first to comment!
                               </p>
