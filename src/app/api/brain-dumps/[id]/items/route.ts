@@ -1,9 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { brainDumps, brainDumpItems, brainDumpCollaborators, itemVotes, users, comments } from '@/lib/db/schema';
-import { eq, or, and, avg, countDistinct } from 'drizzle-orm';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/nextauth';
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import {
+  brainDumps,
+  brainDumpItems,
+  brainDumpCollaborators,
+  users,
+  itemVotes,
+} from '@/lib/db/schema'
+import { eq, or, and } from 'drizzle-orm'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/nextauth'
+import { triggerBrainDumpEvent } from '@/lib/pusher'
 
 // Get all items for a brain dump with voting information
 export async function GET(
@@ -11,20 +18,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    const userId = session?.user ? (session.user as any).id : null;
-    const { id: brainDumpId } = await params;
+    const session = await getServerSession(authOptions)
+    const userId = session?.user ? (session.user as any).id : null
+    const { id: brainDumpId } = await params
 
     // First, check if the brain dump exists and is public
     const [publicBrainDump] = await db
       .select()
       .from(brainDumps)
-      .where(
-        and(
-          eq(brainDumps.id, brainDumpId),
-          eq(brainDumps.isPublic, true)
-        )
-      );
+      .where(and(eq(brainDumps.id, brainDumpId), eq(brainDumps.isPublic, true)))
 
     // If it's public, allow access regardless of authentication
     if (publicBrainDump) {
@@ -32,14 +34,17 @@ export async function GET(
     } else {
       // If not public, require authentication and check access
       if (!session?.user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
 
       // Check if authenticated user has access to this private brain dump
       const [brainDump] = await db
         .select()
         .from(brainDumps)
-        .leftJoin(brainDumpCollaborators, eq(brainDumps.id, brainDumpCollaborators.brainDumpId))
+        .leftJoin(
+          brainDumpCollaborators,
+          eq(brainDumps.id, brainDumpCollaborators.brainDumpId)
+        )
         .where(
           and(
             eq(brainDumps.id, brainDumpId),
@@ -48,17 +53,17 @@ export async function GET(
               eq(brainDumpCollaborators.userId, userId)
             )
           )
-        );
+        )
 
       if (!brainDump) {
         return NextResponse.json(
           { error: 'Brain dump not found or access denied' },
           { status: 404 }
-        );
+        )
       }
     }
 
-    // Get items with voting and comment information
+    // Get items with denormalized vote/comment counts (no joins needed!)
     const items = await db
       .select({
         id: brainDumpItems.id,
@@ -69,34 +74,22 @@ export async function GET(
         createdAt: brainDumpItems.createdAt,
         updatedAt: brainDumpItems.updatedAt,
         createdByName: users.name,
-        avgVotePriority: avg(itemVotes.priority),
-        voteCount: countDistinct(itemVotes.userId),
-        commentCount: countDistinct(comments.id),
+        avgVotePriority: brainDumpItems.avgVotePriority,
+        voteCount: brainDumpItems.voteCount,
+        commentCount: brainDumpItems.commentCount,
       })
       .from(brainDumpItems)
       .leftJoin(users, eq(brainDumpItems.createdById, users.id))
-      .leftJoin(itemVotes, eq(brainDumpItems.id, itemVotes.itemId))
-      .leftJoin(comments, eq(brainDumpItems.id, comments.itemId))
       .where(eq(brainDumpItems.brainDumpId, brainDumpId))
-      .groupBy(
-        brainDumpItems.id,
-        brainDumpItems.title,
-        brainDumpItems.description,
-        brainDumpItems.isCompleted,
-        brainDumpItems.createdById,
-        brainDumpItems.createdAt,
-        brainDumpItems.updatedAt,
-        users.name
-      )
-      .orderBy(brainDumpItems.createdAt);
+      .orderBy(brainDumpItems.createdAt)
 
-    return NextResponse.json({ items });
+    return NextResponse.json({ items })
   } catch (error) {
-    console.error('Error fetching brain dump items:', error);
+    console.error('Error fetching brain dump items:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
-    );
+    )
   }
 }
 
@@ -106,24 +99,27 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getServerSession(authOptions)
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    
-    const userId = (session.user as any).id;
-    const { id: brainDumpId } = await params;
-    const { title, description, priority } = await request.json();
+
+    const userId = (session.user as any).id
+    const { id: brainDumpId } = await params
+    const { title, description, priority } = await request.json()
 
     if (!title?.trim()) {
-      return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Title is required' }, { status: 400 })
     }
 
     // Check if user has access to this brain dump
     const [brainDump] = await db
       .select()
       .from(brainDumps)
-      .leftJoin(brainDumpCollaborators, eq(brainDumps.id, brainDumpCollaborators.brainDumpId))
+      .leftJoin(
+        brainDumpCollaborators,
+        eq(brainDumps.id, brainDumpCollaborators.brainDumpId)
+      )
       .where(
         and(
           eq(brainDumps.id, brainDumpId),
@@ -135,13 +131,13 @@ export async function POST(
             )
           )
         )
-      );
+      )
 
     if (!brainDump) {
       return NextResponse.json(
         { error: 'Brain dump not found or access denied' },
         { status: 404 }
-      );
+      )
     }
 
     // Create the item (without priority field)
@@ -153,20 +149,27 @@ export async function POST(
         description: description?.trim() || '',
         createdById: userId,
       })
-      .returning();
+      .returning()
 
     // Create initial vote for the item with the selected priority
     if (priority) {
+      await db.insert(itemVotes).values({
+        itemId: item.id,
+        userId,
+        priority: priority,
+      })
+
+      // Update denormalized fields immediately
       await db
-        .insert(itemVotes)
-        .values({
-          itemId: item.id,
-          userId,
-          priority: priority,
-        });
+        .update(brainDumpItems)
+        .set({
+          avgVotePriority: String(priority),
+          voteCount: 1,
+        })
+        .where(eq(brainDumpItems.id, item.id))
     }
 
-    // Get the complete item data with vote and comment information
+    // Get the complete item data with denormalized counts (faster!)
     const [completeItem] = await db
       .select({
         id: brainDumpItems.id,
@@ -177,32 +180,34 @@ export async function POST(
         createdAt: brainDumpItems.createdAt,
         updatedAt: brainDumpItems.updatedAt,
         createdByName: users.name,
-        avgVotePriority: avg(itemVotes.priority),
-        voteCount: countDistinct(itemVotes.userId),
-        commentCount: countDistinct(comments.id),
+        avgVotePriority: brainDumpItems.avgVotePriority,
+        voteCount: brainDumpItems.voteCount,
+        commentCount: brainDumpItems.commentCount,
       })
       .from(brainDumpItems)
       .leftJoin(users, eq(brainDumpItems.createdById, users.id))
-      .leftJoin(itemVotes, eq(brainDumpItems.id, itemVotes.itemId))
-      .leftJoin(comments, eq(brainDumpItems.id, comments.itemId))
       .where(eq(brainDumpItems.id, item.id))
-      .groupBy(
-        brainDumpItems.id,
-        brainDumpItems.title,
-        brainDumpItems.description,
-        brainDumpItems.isCompleted,
-        brainDumpItems.createdById,
-        brainDumpItems.createdAt,
-        brainDumpItems.updatedAt,
-        users.name
-      );
 
-    return NextResponse.json({ item: completeItem }, { status: 201 });
+    // Broadcast new item in real-time (don't fail if Pusher isn't configured)
+    try {
+      await triggerBrainDumpEvent(brainDumpId, {
+        type: 'item-created',
+        data: completeItem,
+      })
+    } catch (pusherError) {
+      console.log(
+        'Real-time update failed (Pusher not configured):',
+        pusherError
+      )
+      // Don't fail the whole request if Pusher isn't set up
+    }
+
+    return NextResponse.json({ item: completeItem }, { status: 201 })
   } catch (error) {
-    console.error('Error creating brain dump item:', error);
+    console.error('Error creating brain dump item:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
-    );
+    )
   }
 }

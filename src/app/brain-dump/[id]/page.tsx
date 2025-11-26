@@ -38,9 +38,19 @@ import {
   Search,
   Calendar,
   Loader2,
+  ListChecks,
 } from 'lucide-react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
+import ChecklistSection from '@/components/ChecklistSection'
+import QuickActionsMenu from '@/components/QuickActionsMenu'
+
+interface ChecklistItem {
+  id: string
+  title: string
+  isCompleted: boolean
+  position: number
+}
 
 interface BrainDumpItem {
   id: string
@@ -78,15 +88,18 @@ interface Comment {
 const priorityLabels = {
   1: {
     label: 'Low',
-    color: 'bg-slate-100 text-slate-700 border border-slate-200',
+    color:
+      'bg-blue-100 text-blue-700 border border-blue-300 hover:bg-blue-200 transition-colors',
   },
   2: {
     label: 'Medium',
-    color: 'bg-amber-50 text-amber-700 border border-amber-200',
+    color:
+      'bg-orange-100 text-orange-700 border border-orange-300 hover:bg-orange-200 transition-colors',
   },
   3: {
     label: 'High',
-    color: 'bg-rose-50 text-rose-700 border border-rose-200',
+    color:
+      'bg-red-100 text-red-700 border border-red-300 hover:bg-red-200 transition-colors',
   },
 }
 
@@ -128,6 +141,18 @@ export default function BrainDumpPage() {
   // Edit item state
   const [editingItem, setEditingItem] = useState<string | null>(null)
   const [editItemText, setEditItemText] = useState('')
+  const [editItemDescription, setEditItemDescription] = useState('')
+  const [inlineEditingItem, setInlineEditingItem] = useState<string | null>(
+    null
+  )
+  const [inlineEditText, setInlineEditText] = useState('')
+  const [autoSaveTimeout, setAutoSaveTimeout] = useState<NodeJS.Timeout | null>(
+    null
+  )
+  const [inlineEditingDescription, setInlineEditingDescription] = useState<
+    string | null
+  >(null)
+  const [inlineDescriptionText, setInlineDescriptionText] = useState('')
 
   // Comments state
   const [selectedItem, setSelectedItem] = useState<string | null>(null)
@@ -164,6 +189,15 @@ export default function BrainDumpPage() {
   const [votingItems, setVotingItems] = useState<Set<string>>(new Set())
   const [votingPriority, setVotingPriority] = useState<Record<string, number>>(
     {}
+  )
+
+  // Expanded items state
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
+  const [checklistItems, setChecklistItems] = useState<
+    Record<string, ChecklistItem[]>
+  >({})
+  const [loadingChecklists, setLoadingChecklists] = useState<Set<string>>(
+    new Set()
   )
 
   const brainDumpId = params.id as string
@@ -242,6 +276,91 @@ export default function BrainDumpPage() {
     fetchItems()
   }, [fetchBrainDump, fetchItems])
 
+  // Real-time updates via Pusher
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    // Check if Pusher is configured
+    if (
+      !process.env.NEXT_PUBLIC_PUSHER_KEY ||
+      !process.env.NEXT_PUBLIC_PUSHER_CLUSTER
+    ) {
+      console.log('⚠️ Pusher not configured - real-time updates disabled')
+      return
+    }
+
+    try {
+      const PusherClient = require('pusher-js')
+      const pusher = new PusherClient(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
+        cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+      })
+
+      // Log connection state changes
+      pusher.connection.bind('state_change', (states: any) => {
+        console.log('🔌 Pusher connection state:', states.current)
+      })
+
+      pusher.connection.bind('connected', () => {
+        console.log('✅ Pusher connected successfully!')
+      })
+
+      pusher.connection.bind('error', (err: any) => {
+        console.error('❌ Pusher connection error:', err)
+      })
+
+      const channel = pusher.subscribe(`brain-dump-${brainDumpId}`)
+
+      channel.bind('pusher:subscription_succeeded', () => {
+        console.log('✅ Subscribed to brain-dump channel:', brainDumpId)
+      })
+
+      // Handle new items
+      channel.bind('item-created', (data: any) => {
+        console.log('🆕 Real-time: New item received', data)
+        setItems((prev) => {
+          const exists = prev.find((item) => item.id === data.id)
+          if (exists) return prev
+          return [...prev, data]
+        })
+      })
+
+      // Handle vote updates
+      channel.bind('vote-updated', (data: any) => {
+        console.log('🗳️ Real-time: Vote update received', data)
+        setItems((prev) =>
+          prev.map((item) =>
+            item.id === data.id ? { ...item, ...data } : item
+          )
+        )
+      })
+
+      // Handle item updates
+      channel.bind('item-updated', (data: any) => {
+        console.log('📝 Real-time: Item update received', data)
+        setItems((prev) =>
+          prev.map((item) =>
+            item.id === data.id ? { ...item, ...data } : item
+          )
+        )
+      })
+
+      // Handle item deletions
+      channel.bind('item-deleted', (data: { itemId: string }) => {
+        console.log('🗑️ Real-time: Item deletion received', data)
+        setItems((prev) => prev.filter((item) => item.id !== data.itemId))
+      })
+
+      return () => {
+        channel.unbind_all()
+        channel.unsubscribe()
+        pusher.disconnect()
+        console.log('🔌 Pusher disconnected')
+      }
+    } catch (error) {
+      console.error('❌ Failed to initialize Pusher:', error)
+    }
+  }, [brainDumpId])
+
   // Quick add item function
   const quickAddItem = async (e: React.FormEvent, priority?: number) => {
     e.preventDefault()
@@ -307,25 +426,35 @@ export default function BrainDumpPage() {
   }
 
   // Edit item function
-  const updateItem = async (itemId: string, newTitle: string) => {
+  const updateItem = async (
+    itemId: string,
+    newTitle: string,
+    newDescription: string
+  ) => {
     try {
       const response = await fetch(
         `/api/brain-dumps/${brainDumpId}/items/${itemId}`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: newTitle }),
+          body: JSON.stringify({
+            title: newTitle,
+            description: newDescription,
+          }),
         }
       )
 
       if (response.ok) {
         setItems(
           items.map((item) =>
-            item.id === itemId ? { ...item, title: newTitle } : item
+            item.id === itemId
+              ? { ...item, title: newTitle, description: newDescription }
+              : item
           )
         )
         setEditingItem(null)
         setEditItemText('')
+        setEditItemDescription('')
       }
     } catch (error) {
       console.error('Error updating item:', error)
@@ -336,12 +465,124 @@ export default function BrainDumpPage() {
   const startEditing = (item: BrainDumpItem) => {
     setEditingItem(item.id)
     setEditItemText(item.title)
+    setEditItemDescription(item.description || '')
   }
 
   // Cancel editing
   const cancelEditing = () => {
     setEditingItem(null)
     setEditItemText('')
+    setEditItemDescription('')
+  }
+
+  // Inline editing functions
+  const startInlineEdit = (itemId: string, currentTitle: string) => {
+    setInlineEditingItem(itemId)
+    setInlineEditText(currentTitle)
+  }
+
+  const handleInlineEditChange = (itemId: string, newText: string) => {
+    setInlineEditText(newText)
+
+    // Clear existing timeout
+    if (autoSaveTimeout) {
+      clearTimeout(autoSaveTimeout)
+    }
+
+    // Set new auto-save timeout (500ms after typing stops)
+    const timeout = setTimeout(() => {
+      saveInlineEdit(itemId, newText)
+    }, 500)
+
+    setAutoSaveTimeout(timeout)
+  }
+
+  const saveInlineEdit = async (itemId: string, newTitle: string) => {
+    if (
+      !newTitle.trim() ||
+      newTitle === items.find((i) => i.id === itemId)?.title
+    ) {
+      setInlineEditingItem(null)
+      return
+    }
+
+    try {
+      const response = await fetch(
+        `/api/brain-dumps/${brainDumpId}/items/${itemId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: newTitle.trim() }),
+        }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        setItems((prev) =>
+          prev.map((item) =>
+            item.id === itemId ? { ...item, ...data.item } : item
+          )
+        )
+        setInlineEditingItem(null)
+      }
+    } catch (error) {
+      console.error('Error updating item:', error)
+    }
+  }
+
+  const cancelInlineEdit = () => {
+    if (autoSaveTimeout) {
+      clearTimeout(autoSaveTimeout)
+    }
+    setInlineEditingItem(null)
+    setInlineEditText('')
+  }
+
+  // Inline description editing functions
+  const startInlineDescriptionEdit = (
+    itemId: string,
+    currentDescription: string
+  ) => {
+    setInlineEditingDescription(itemId)
+    setInlineDescriptionText(currentDescription)
+  }
+
+  const saveInlineDescriptionEdit = async (
+    itemId: string,
+    newDescription: string
+  ) => {
+    try {
+      const item = items.find((i) => i.id === itemId)
+      if (!item) return
+
+      const response = await fetch(
+        `/api/brain-dumps/${brainDumpId}/items/${itemId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: newDescription.trim() }),
+        }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        setItems((prev) =>
+          prev.map((item) =>
+            item.id === itemId
+              ? { ...item, description: newDescription.trim() }
+              : item
+          )
+        )
+        setInlineEditingDescription(null)
+      }
+    } catch (error) {
+      console.error('Error updating description:', error)
+    }
+  }
+
+  const cancelInlineDescriptionEdit = () => {
+    setInlineEditingDescription(null)
+    setInlineDescriptionText('')
   }
 
   // Fetch comments for an item
@@ -587,6 +828,25 @@ export default function BrainDumpPage() {
   }
 
   const voteOnItem = async (itemId: string, priority: number) => {
+    // Optimistic update - update UI immediately for instant feedback
+    const previousItems = [...items]
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item
+        const newVoteCount = item.voteCount + 1
+        const currentTotal =
+          parseFloat(String(item.avgVotePriority)) * item.voteCount
+        const newAvg = parseFloat(
+          ((currentTotal + priority) / newVoteCount).toFixed(2)
+        )
+        return {
+          ...item,
+          avgVotePriority: newAvg,
+          voteCount: newVoteCount,
+        }
+      })
+    )
+
     // Set loading state
     setVotingItems((prev) => new Set(prev).add(itemId))
     setVotingPriority((prev) => ({ ...prev, [itemId]: priority }))
@@ -598,12 +858,15 @@ export default function BrainDumpPage() {
         body: JSON.stringify({ priority }),
       })
 
-      if (response.ok) {
-        // Refresh items to get updated vote counts
-        await fetchItems()
+      if (!response.ok) {
+        // Rollback on error
+        setItems(previousItems)
+        throw new Error('Vote failed')
       }
+      // Real-time update via WebSocket will handle the final state
     } catch (error) {
       console.error('Error voting on item:', error)
+      // Items already rolled back above
     } finally {
       // Clear loading state
       setVotingItems((prev) => {
@@ -624,6 +887,75 @@ export default function BrainDumpPage() {
       return Number(item.avgVotePriority)
     }
     return 2 // Default to medium priority if no votes
+  }
+
+  // Expand/collapse item and fetch checklist
+  const toggleExpandItem = async (itemId: string) => {
+    const isExpanded = expandedItems.has(itemId)
+
+    if (isExpanded) {
+      // Collapse
+      setExpandedItems((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(itemId)
+        return newSet
+      })
+    } else {
+      // Expand and fetch checklist if not already loaded
+      setExpandedItems((prev) => new Set(prev).add(itemId))
+
+      if (!checklistItems[itemId] && !loadingChecklists.has(itemId)) {
+        await fetchChecklist(itemId)
+      }
+    }
+  }
+
+  // Fetch checklist items for an item
+  const fetchChecklist = async (itemId: string) => {
+    setLoadingChecklists((prev) => new Set(prev).add(itemId))
+
+    try {
+      const response = await fetch(`/api/items/${itemId}/checklist`)
+      if (response.ok) {
+        const data = await response.json()
+        setChecklistItems((prev) => ({
+          ...prev,
+          [itemId]: data.checklistItems || [],
+        }))
+      }
+    } catch (error) {
+      console.error('Error fetching checklist:', error)
+    } finally {
+      setLoadingChecklists((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(itemId)
+        return newSet
+      })
+    }
+  }
+
+  // Load checklists automatically when items change
+  useEffect(() => {
+    if (items.length > 0) {
+      items.forEach((item) => {
+        if (!checklistItems[item.id] && !loadingChecklists.has(item.id)) {
+          fetchChecklist(item.id)
+        }
+      })
+    }
+  }, [items])
+
+  // Calculate checklist progress
+  const getChecklistProgress = (itemId: string) => {
+    const items = checklistItems[itemId] || []
+    if (items.length === 0) return null
+
+    const completed = items.filter((item) => item.isCompleted).length
+    return {
+      completed,
+      total: items.length,
+      percentage: Math.round((completed / items.length) * 100),
+    }
   }
 
   // Helper function to check date filter
@@ -1153,8 +1485,8 @@ export default function BrainDumpPage() {
               />
             </div>
 
-            {/* Date Filter */}
-            <div className="flex items-center space-x-2">
+            {/* Date Filter - Hidden on mobile */}
+            <div className="hidden sm:flex items-center space-x-2">
               <Calendar className="w-4 h-4 text-gray-500" />
               <Label className="text-sm font-medium whitespace-nowrap">
                 Date:
@@ -1187,14 +1519,14 @@ export default function BrainDumpPage() {
               </div>
             </div>
 
-            {/* Priority Filter */}
-            <div className="flex items-center space-x-2">
+            {/* Priority Filter - Hidden on mobile */}
+            <div className="hidden sm:flex items-center space-x-2">
               <Filter className="w-4 h-4 text-gray-500" />
               <Label className="text-sm font-medium whitespace-nowrap">
                 Priority:
               </Label>
             </div>
-            <div className="flex space-x-1 overflow-x-auto">
+            <div className="hidden sm:flex space-x-1 overflow-x-auto">
               <Button
                 variant="outline"
                 size="sm"
@@ -1650,40 +1982,88 @@ export default function BrainDumpPage() {
                     className={`${item.isCompleted ? 'opacity-60' : ''} ${
                       selectedItem === item.id
                         ? 'ring-2 ring-purple-200 border-purple-200'
-                        : ''
-                    } gap-1 p-3`}
+                        : 'hover:shadow-lg hover:border-gray-300'
+                    } gap-1 p-4 transition-all duration-300 ease-out group cursor-pointer`}
+                    onClick={(e) => {
+                      // Only expand if not clicking on interactive elements
+                      const target = e.target as HTMLElement
+                      if (
+                        !target.closest('button') &&
+                        !target.closest('input') &&
+                        !target.closest('textarea') &&
+                        !target.closest('[role="menuitem"]') &&
+                        !target.closest('a')
+                      ) {
+                        toggleExpandItem(item.id)
+                      }
+                    }}
                   >
                     <CardHeader className="pb-3 px-1">
                       <div className="space-y-2">
                         {/* Title Row - Mobile: Title + Priority, Desktop: Title + Badges */}
                         <div className="flex justify-between items-start">
                           {/* Title and Edit Mode */}
-                          <div className="flex-1 min-w-0 pr-2">
+                          <div
+                            className="flex-1 min-w-0 pr-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             {editingItem === item.id ? (
                               <div className="space-y-3">
-                                <Textarea
-                                  value={editItemText}
-                                  onChange={(e) =>
-                                    setEditItemText(e.target.value)
-                                  }
-                                  className="flex-1 min-h-[80px] resize-none"
-                                  placeholder="Edit item title and description..."
-                                  onKeyDown={(e) => {
-                                    if (
-                                      e.key === 'Enter' &&
-                                      (e.ctrlKey || e.metaKey)
-                                    ) {
-                                      updateItem(item.id, editItemText)
-                                    } else if (e.key === 'Escape') {
-                                      cancelEditing()
+                                <div className="space-y-2">
+                                  <Input
+                                    value={editItemText}
+                                    onChange={(e) =>
+                                      setEditItemText(e.target.value)
                                     }
-                                  }}
-                                />
+                                    className="flex-1"
+                                    placeholder="Item title..."
+                                    onKeyDown={(e) => {
+                                      if (
+                                        e.key === 'Enter' &&
+                                        (e.ctrlKey || e.metaKey)
+                                      ) {
+                                        updateItem(
+                                          item.id,
+                                          editItemText,
+                                          editItemDescription
+                                        )
+                                      } else if (e.key === 'Escape') {
+                                        cancelEditing()
+                                      }
+                                    }}
+                                  />
+                                  <Textarea
+                                    value={editItemDescription}
+                                    onChange={(e) =>
+                                      setEditItemDescription(e.target.value)
+                                    }
+                                    className="flex-1 min-h-[80px] resize-none"
+                                    placeholder="Description (optional)..."
+                                    onKeyDown={(e) => {
+                                      if (
+                                        e.key === 'Enter' &&
+                                        (e.ctrlKey || e.metaKey)
+                                      ) {
+                                        updateItem(
+                                          item.id,
+                                          editItemText,
+                                          editItemDescription
+                                        )
+                                      } else if (e.key === 'Escape') {
+                                        cancelEditing()
+                                      }
+                                    }}
+                                  />
+                                </div>
                                 <div className="flex items-center space-x-2">
                                   <Button
                                     size="sm"
                                     onClick={() =>
-                                      updateItem(item.id, editItemText)
+                                      updateItem(
+                                        item.id,
+                                        editItemText,
+                                        editItemDescription
+                                      )
                                     }
                                     className="px-3"
                                   >
@@ -1704,188 +2084,316 @@ export default function BrainDumpPage() {
                                   </span>
                                 </div>
                               </div>
+                            ) : inlineEditingItem === item.id ? (
+                              <Input
+                                value={inlineEditText}
+                                onChange={(e) =>
+                                  handleInlineEditChange(
+                                    item.id,
+                                    e.target.value
+                                  )
+                                }
+                                onBlur={() =>
+                                  saveInlineEdit(item.id, inlineEditText)
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter')
+                                    saveInlineEdit(item.id, inlineEditText)
+                                  if (e.key === 'Escape') cancelInlineEdit()
+                                }}
+                                className="text-base sm:text-lg font-semibold border-blue-300 focus:ring-blue-500 h-auto py-0 px-0 leading-tight"
+                                style={{ minHeight: 'auto' }}
+                                autoFocus
+                              />
                             ) : (
                               <CardTitle
-                                className={`text-base sm:text-lg leading-tight ${
+                                onDoubleClick={() =>
+                                  userPermissions.canEdit &&
+                                  startInlineEdit(item.id, item.title)
+                                }
+                                className={`text-base sm:text-lg leading-tight transition-all ${
+                                  userPermissions.canEdit
+                                    ? 'cursor-text hover:bg-gray-50 hover:px-2 hover:-mx-2 rounded'
+                                    : ''
+                                } ${
                                   item.isCompleted
                                     ? 'line-through text-gray-500'
                                     : 'text-gray-900'
                                 }`}
+                                title={
+                                  userPermissions.canEdit
+                                    ? 'Double-click to edit'
+                                    : ''
+                                }
                               >
                                 {item.title}
                               </CardTitle>
                             )}
-                            {item.description && (
-                              <CardDescription className="mt-1 text-sm">
-                                {item.description}
-                              </CardDescription>
-                            )}
-                          </div>
-
-                          {/* Mobile Priority Badge - Right side */}
-                          <div className="sm:hidden flex-shrink-0">
-                            <Badge
-                              className={`text-xs ${
-                                priorityLabels[
-                                  Math.round(
-                                    getPriorityScore(item)
-                                  ) as keyof typeof priorityLabels
-                                ].color
-                              }`}
-                            >
-                              {
-                                priorityLabels[
-                                  Math.round(
-                                    getPriorityScore(item)
-                                  ) as keyof typeof priorityLabels
-                                ].label
-                              }
-                              {item.voteCount && item.voteCount > 0 && (
-                                <span className="ml-1">
-                                  ({item.voteCount} vote
-                                  {item.voteCount <= 1 ? '' : 's'})
-                                </span>
+                            {/* Creator info below title */}
+                            <div className="text-xs text-gray-500 mt-1">
+                              <span className="font-medium">
+                                {item.createdByName}
+                              </span>
+                              {' • '}
+                              {new Date(item.createdAt).toLocaleDateString(
+                                'en-US',
+                                {
+                                  month: 'short',
+                                  day: 'numeric',
+                                }
                               )}
-                            </Badge>
+                            </div>
+                            {item.description &&
+                              !expandedItems.has(item.id) && (
+                                <CardDescription className="mt-1 text-sm line-clamp-2">
+                                  {item.description}
+                                </CardDescription>
+                              )}
                           </div>
 
-                          {/* Desktop Priority Badges - Top Right */}
-                          <div className="hidden sm:flex items-center space-x-2 ml-4 flex-shrink-0">
-                            <Badge
-                              className={`text-xs ${
-                                priorityLabels[
-                                  Math.round(
-                                    getPriorityScore(item)
-                                  ) as keyof typeof priorityLabels
-                                ].color
-                              }`}
-                            >
-                              {
-                                priorityLabels[
-                                  Math.round(
-                                    getPriorityScore(item)
-                                  ) as keyof typeof priorityLabels
-                                ].label
-                              }
-                            </Badge>
+                          {/* Mobile Badges & Actions - Right side */}
+                          <div className="sm:hidden flex items-center space-x-1.5 flex-shrink-0">
+                            {/* Vote count - far left */}
                             {item.voteCount > 0 && (
                               <Badge variant="outline" className="text-xs">
-                                {item.voteCount} vote
-                                {item.voteCount <= 1 ? '' : 's'}
+                                {item.voteCount}
                               </Badge>
                             )}
+                            {/* Priority */}
+                            <Badge
+                              className={`text-xs ${
+                                priorityLabels[
+                                  Math.round(
+                                    getPriorityScore(item)
+                                  ) as keyof typeof priorityLabels
+                                ].color
+                              }`}
+                            >
+                              {
+                                priorityLabels[
+                                  Math.round(
+                                    getPriorityScore(item)
+                                  ) as keyof typeof priorityLabels
+                                ].label
+                              }
+                            </Badge>
+                            {/* Comment indicator - Always show */}
+                            <button
+                              onClick={() => handleItemSelect(item.id)}
+                              className="relative p-1"
+                            >
+                              <MessageSquare className="w-4 h-4 text-blue-600" />
+                              <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                                {item.commentCount || 0}
+                              </span>
+                            </button>
+                            {/* Quick Actions - Mobile */}
+                            <QuickActionsMenu
+                              isCompleted={item.isCompleted}
+                              canEdit={
+                                userPermissions.canEdit &&
+                                (item.createdById === (user as any)?.id ||
+                                  isOwner)
+                              }
+                              onToggleComplete={() =>
+                                toggleCompleteItem(item.id, item.isCompleted)
+                              }
+                              onEdit={() => startEditing(item)}
+                              onDelete={() => openDeleteItemDialog(item.id)}
+                              onViewComments={() => handleItemSelect(item.id)}
+                              commentCount={item.commentCount || 0}
+                            />
+                          </div>
+
+                          {/* Desktop Badges & Actions - Top Right */}
+                          <div className="hidden sm:flex items-center space-x-2 ml-4 flex-shrink-0">
+                            {/* Vote count - far left */}
+                            {item.voteCount > 0 && (
+                              <Badge variant="outline" className="text-xs">
+                                {item.voteCount}
+                              </Badge>
+                            )}
+                            {/* Priority */}
+                            <Badge
+                              className={`text-xs ${
+                                priorityLabels[
+                                  Math.round(
+                                    getPriorityScore(item)
+                                  ) as keyof typeof priorityLabels
+                                ].color
+                              }`}
+                            >
+                              {
+                                priorityLabels[
+                                  Math.round(
+                                    getPriorityScore(item)
+                                  ) as keyof typeof priorityLabels
+                                ].label
+                              }
+                            </Badge>
+                            {/* Comment Count Badge - Always show */}
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 cursor-pointer"
+                              onClick={() => handleItemSelect(item.id)}
+                            >
+                              <MessageSquare className="w-3 h-3 mr-1" />
+                              {item.commentCount || 0}
+                            </Badge>
+                            {/* Quick Actions Menu */}
+                            <QuickActionsMenu
+                              isCompleted={item.isCompleted}
+                              canEdit={
+                                userPermissions.canEdit &&
+                                (item.createdById === (user as any)?.id ||
+                                  isOwner)
+                              }
+                              onToggleComplete={() =>
+                                toggleCompleteItem(item.id, item.isCompleted)
+                              }
+                              onEdit={() => startEditing(item)}
+                              onDelete={() => openDeleteItemDialog(item.id)}
+                              onViewComments={() => handleItemSelect(item.id)}
+                              commentCount={item.commentCount || 0}
+                            />
                           </div>
                         </div>
                       </div>
+
+                      {/* Expandable Content - moved to bottom */}
+                      <AnimatePresence>
+                        {expandedItems.has(item.id) && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="overflow-hidden mt-3"
+                          >
+                            <div className="pt-3 space-y-4 border-t">
+                              {/* Description */}
+                              {(item.description ||
+                                inlineEditingDescription === item.id) && (
+                                <div
+                                  className="px-2"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <h4 className="text-sm font-medium text-gray-700 mb-2">
+                                    Description
+                                  </h4>
+                                  {inlineEditingDescription === item.id ? (
+                                    <Textarea
+                                      value={inlineDescriptionText}
+                                      onChange={(e) =>
+                                        setInlineDescriptionText(e.target.value)
+                                      }
+                                      onBlur={() =>
+                                        saveInlineDescriptionEdit(
+                                          item.id,
+                                          inlineDescriptionText
+                                        )
+                                      }
+                                      onKeyDown={(e) => {
+                                        if (
+                                          e.key === 'Enter' &&
+                                          (e.ctrlKey || e.metaKey)
+                                        ) {
+                                          e.preventDefault()
+                                          saveInlineDescriptionEdit(
+                                            item.id,
+                                            inlineDescriptionText
+                                          )
+                                        }
+                                        if (e.key === 'Escape') {
+                                          e.preventDefault()
+                                          cancelInlineDescriptionEdit()
+                                        }
+                                      }}
+                                      className="text-sm text-gray-600 whitespace-pre-wrap resize-none border-blue-300 focus:ring-blue-500 rounded p-2 -mx-2 min-h-0"
+                                      style={{ minHeight: 'auto' }}
+                                      placeholder="Add description..."
+                                      autoFocus
+                                    />
+                                  ) : (
+                                    <p
+                                      className="text-sm text-gray-600 whitespace-pre-wrap cursor-text hover:bg-gray-50 rounded p-2 -mx-2"
+                                      onDoubleClick={() =>
+                                        userPermissions.canEdit &&
+                                        startInlineDescriptionEdit(
+                                          item.id,
+                                          item.description || ''
+                                        )
+                                      }
+                                      title={
+                                        userPermissions.canEdit
+                                          ? 'Double-click to edit'
+                                          : ''
+                                      }
+                                    >
+                                      {item.description || (
+                                        <span className="text-gray-400 italic">
+                                          No description
+                                        </span>
+                                      )}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Checklist Section */}
+                              <div
+                                className="px-2"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="flex items-center justify-between mb-3">
+                                  <h4 className="text-sm font-medium text-gray-700 flex items-center">
+                                    <ListChecks className="w-4 h-4 mr-2" />
+                                    Checklist
+                                  </h4>
+                                </div>
+
+                                <ChecklistSection
+                                  itemId={item.id}
+                                  checklistItems={checklistItems[item.id] || []}
+                                  onUpdate={() => fetchChecklist(item.id)}
+                                  canEdit={userPermissions.canEdit}
+                                />
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </CardHeader>
                     <CardContent className="pt-0 px-1">
                       {/* Mobile-First Layout */}
                       <div className="space-y-3">
-                        {/* Meta Info */}
-                        <div className="text-xs sm:text-sm text-gray-500">
-                          <span className="hidden sm:inline">
-                            Created by{' '}
-                            <span className="font-medium">
-                              {item.createdByName}
-                            </span>{' '}
-                            on{' '}
-                            {new Date(item.createdAt).toLocaleDateString(
-                              'en-US',
-                              {
-                                weekday: 'short',
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric',
-                              }
-                            )}
-                            {item.updatedAt !== item.createdAt && (
-                              <span className="ml-2">
-                                • Last updated{' '}
-                                {new Date(item.updatedAt).toLocaleDateString(
-                                  'en-US',
-                                  {
-                                    month: 'short',
-                                    day: 'numeric',
-                                  }
+                        {/* Show Details Button & Vote Priority */}
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                          {/* Show/Hide Details - Bottom Left */}
+                          <button
+                            onClick={() => toggleExpandItem(item.id)}
+                            className="flex items-center space-x-2 text-sm text-gray-600 hover:text-gray-900 py-1 px-2 rounded hover:bg-gray-50 transition-colors"
+                          >
+                            {expandedItems.has(item.id) ? (
+                              <>
+                                <ChevronUp className="w-4 h-4" />
+                                <span>Hide details</span>
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="w-4 h-4" />
+                                <span>Show details</span>
+                                {getChecklistProgress(item.id) && (
+                                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full ml-2">
+                                    {getChecklistProgress(item.id)?.completed}/
+                                    {getChecklistProgress(item.id)?.total}
+                                  </span>
                                 )}
-                              </span>
+                              </>
                             )}
-                          </span>
-                          <span className="sm:hidden">
-                            {item.createdByName} •{' '}
-                            {new Date(item.createdAt).toLocaleDateString()}
-                          </span>
-                        </div>
+                          </button>
 
-                        {/* Action Row - Responsive Design */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-3 sm:space-y-0">
-                          {/* Left Actions */}
-                          <div className="flex items-center space-x-1 sm:space-x-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() =>
-                                toggleCompleteItem(item.id, item.isCompleted)
-                              }
-                              className={`p-2 sm:px-3 ${
-                                item.isCompleted
-                                  ? 'text-emerald-700 bg-emerald-50 border border-emerald-200'
-                                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-700'
-                              }`}
-                            >
-                              <Check className="w-4 h-4 sm:mr-2" />
-                              <span className=" sm:inline">
-                                {item.isCompleted
-                                  ? 'Completed'
-                                  : 'Mark Complete'}
-                              </span>
-                            </Button>
-
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => startEditing(item)}
-                              className="p-2 sm:px-3 text-slate-600 hover:bg-slate-50 hover:text-slate-700"
-                            >
-                              <Edit className="w-4 h-4 sm:mr-2" />
-                              <span className=" sm:inline">Edit</span>
-                            </Button>
-
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleItemSelect(item.id)}
-                              className="p-2 sm:px-3 text-slate-600 hover:bg-slate-50 hover:text-slate-700 relative"
-                            >
-                              <MessageSquare className="w-4 h-4 sm:mr-2" />
-                              <span className="hidden sm:inline">
-                                Comments
-                                {item.commentCount && item.commentCount > 0
-                                  ? ` (${item.commentCount})`
-                                  : ''}
-                              </span>
-                              {/* Comment indicator dot - Mobile only */}
-                              {item.commentCount && item.commentCount > 0 && (
-                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-slate-400 rounded-full sm:hidden"></div>
-                              )}
-                            </Button>
-
-                            {/* Delete button - only show for item owners or brain dump owners */}
-                            {(item.createdById === (user as any)?.id ||
-                              isOwner) && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => openDeleteItemDialog(item.id)}
-                                className="p-2 sm:px-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                              >
-                                <Trash2 className="w-4 h-4 sm:mr-2" />
-                                <span className="hidden sm:inline">Delete</span>
-                              </Button>
-                            )}
-                          </div>
-
-                          {/* Priority Voting - Enhanced for Desktop - Only show if user can vote */}
+                          {/* Priority Voting - Bottom Left */}
                           {userPermissions.canVote && (
                             <div className="flex items-center space-x-1 sm:space-x-2">
                               <span className="text-xs text-gray-500 mr-2 hidden sm:inline">

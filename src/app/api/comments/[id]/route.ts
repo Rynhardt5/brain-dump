@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { comments } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/nextauth';
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import { comments, brainDumpItems } from '@/lib/db/schema'
+import { eq, count } from 'drizzle-orm'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/nextauth'
 
 // Update a comment
 export async function PATCH(
@@ -11,50 +11,53 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getServerSession(authOptions)
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    
-    const userId = (session.user as any).id;
-    const { id: commentId } = await params;
-    const { content } = await request.json();
+
+    const userId = (session.user as any).id
+    const { id: commentId } = await params
+    const { content } = await request.json()
 
     if (!content?.trim()) {
-      return NextResponse.json({ error: 'Content is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Content is required' },
+        { status: 400 }
+      )
     }
 
     // Check if the comment exists and user owns it
     const [existingComment] = await db
       .select()
       .from(comments)
-      .where(eq(comments.id, commentId));
+      .where(eq(comments.id, commentId))
 
     if (!existingComment) {
-      return NextResponse.json({ error: 'Comment not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Comment not found' }, { status: 404 })
     }
 
     if (existingComment.createdById !== userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
     // Update the comment
     const [updatedComment] = await db
       .update(comments)
-      .set({ 
+      .set({
         content: content.trim(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
       })
       .where(eq(comments.id, commentId))
-      .returning();
+      .returning()
 
-    return NextResponse.json({ comment: updatedComment });
+    return NextResponse.json({ comment: updatedComment })
   } catch (error) {
-    console.error('Error updating comment:', error);
+    console.error('Error updating comment:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
-    );
+    )
   }
 }
 
@@ -64,39 +67,51 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getServerSession(authOptions)
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    
-    const userId = (session.user as any).id;
-    const { id: commentId } = await params;
+
+    const userId = (session.user as any).id
+    const { id: commentId } = await params
 
     // Check if the comment exists and user owns it
     const [existingComment] = await db
       .select()
       .from(comments)
-      .where(eq(comments.id, commentId));
+      .where(eq(comments.id, commentId))
 
     if (!existingComment) {
-      return NextResponse.json({ error: 'Comment not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Comment not found' }, { status: 404 })
     }
 
     if (existingComment.createdById !== userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
-    // Delete the comment
-    await db
-      .delete(comments)
-      .where(eq(comments.id, commentId));
+    // Store itemId before deleting
+    const itemId = existingComment.itemId
 
-    return NextResponse.json({ success: true });
+    // Delete the comment
+    await db.delete(comments).where(eq(comments.id, commentId))
+
+    // Update comment count on the item (in case triggers aren't set up yet)
+    const [commentCountResult] = await db
+      .select({ count: count() })
+      .from(comments)
+      .where(eq(comments.itemId, itemId))
+
+    await db
+      .update(brainDumpItems)
+      .set({ commentCount: commentCountResult.count })
+      .where(eq(brainDumpItems.id, itemId))
+
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error deleting comment:', error);
+    console.error('Error deleting comment:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
-    );
+    )
   }
 }

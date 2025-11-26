@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { comments, users } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+import { comments, users, brainDumpItems } from '@/lib/db/schema'
+import { eq, count } from 'drizzle-orm'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/nextauth'
 
@@ -79,6 +79,17 @@ export async function POST(
       .from(comments)
       .leftJoin(users, eq(comments.createdById, users.id))
       .where(eq(comments.id, comment.id))
+
+    // Update comment count on the item (in case triggers aren't set up yet)
+    const [commentCountResult] = await db
+      .select({ count: count() })
+      .from(comments)
+      .where(eq(comments.itemId, itemId))
+
+    await db
+      .update(brainDumpItems)
+      .set({ commentCount: commentCountResult.count })
+      .where(eq(brainDumpItems.id, itemId))
 
     return NextResponse.json({ comment: commentWithUser })
   } catch (error) {

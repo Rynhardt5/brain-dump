@@ -115,12 +115,12 @@ export default function DashboardPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [collaboratorToDelete, setCollaboratorToDelete] =
     useState<Collaborator | null>(null)
-  
+
   // Loading states
   const [isCreating, setIsCreating] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
-  
+
   // Animation state
   const [isReordering, setIsReordering] = useState(false)
 
@@ -718,8 +718,8 @@ export default function DashboardPage() {
               />
             </div>
 
-            {/* Filters Row - Stacked on mobile, horizontal on desktop */}
-            <div className="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-6">
+            {/* Filters Row - Hidden on mobile */}
+            <div className="hidden sm:flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-6">
               {/* Filter Type */}
               <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2">
                 <div className="flex items-center space-x-2">
@@ -787,7 +787,7 @@ export default function DashboardPage() {
                   ))}
                   <motion.div
                     animate={isReordering ? { rotate: 360 } : { rotate: 0 }}
-                    transition={{ duration: 0.5, ease: "easeInOut" }}
+                    transition={{ duration: 0.5, ease: 'easeInOut' }}
                   >
                     <Button
                       variant="outline"
@@ -852,7 +852,7 @@ export default function DashboardPage() {
             )}
           </div>
         ) : (
-          <motion.div 
+          <motion.div
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6"
             layout
           >
@@ -862,109 +862,112 @@ export default function DashboardPage() {
                   key={brainDump.id}
                   layout
                   initial={{ opacity: 0, y: 20 }}
-                  animate={{ 
-                    opacity: 1, 
+                  animate={{
+                    opacity: 1,
                     y: 0,
                     transition: {
                       duration: 0.3,
-                      delay: isReordering ? index * 0.05 : 0
-                    }
+                      delay: isReordering ? index * 0.05 : 0,
+                    },
                   }}
                   exit={{ opacity: 0, y: -20, transition: { duration: 0.2 } }}
                   whileHover={{ y: -2, transition: { duration: 0.2 } }}
                   className="block"
                 >
-                  <Link
-                    href={`/brain-dump/${brainDump.id}`}
-                    className="block"
-                  >
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer pt-3 pb-0">
-                  <CardHeader className="pb-2 px-3">
-                    <div className="flex justify-between items-start gap-2">
-                      <CardTitle className="text-sm sm:text-base leading-tight flex-1 min-w-0">
-                        <span className="line-clamp-1">{brainDump.name}</span>
-                      </CardTitle>
-                      <div className="flex items-center space-x-1 flex-shrink-0">
-                        {brainDump.isPublic && (
-                          <Badge
-                            variant="secondary"
-                            className="text-xs px-1 py-0"
-                          >
-                            Public
-                          </Badge>
-                        )}
-                        {!brainDump.isOwner && (
-                          <Badge
-                            variant="outline"
-                            className="text-xs px-1 py-0"
-                          >
-                            Shared
-                          </Badge>
-                        )}
-                        {brainDump.isOwner && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                openShareDialog(brainDump)
-                              }}
-                              className="p-1 h-5 w-5 text-slate-400 hover:text-slate-600"
-                            >
-                              <Share className="w-3 h-3" />
-                            </Button>
-                            {brainDump.collaboratorCount > 0 && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={(e) => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  openManageCollaborators(brainDump)
-                                }}
-                                className="p-1 h-5 w-5 text-slate-400 hover:text-slate-600"
+                  <Link href={`/brain-dump/${brainDump.id}`} className="block">
+                    <Card className="hover:shadow-lg transition-shadow cursor-pointer pt-3 pb-0">
+                      <CardHeader className="pb-2 px-3">
+                        <div className="flex justify-between items-start gap-2">
+                          <CardTitle className="text-sm sm:text-base leading-tight flex-1 min-w-0">
+                            <span className="line-clamp-1">
+                              {brainDump.name}
+                            </span>
+                          </CardTitle>
+                          <div className="flex items-center space-x-1 flex-shrink-0">
+                            {brainDump.isPublic && (
+                              <Badge
+                                variant="secondary"
+                                className="text-xs px-1 py-0"
                               >
-                                <Settings className="w-3 h-3" />
-                              </Button>
+                                Public
+                              </Badge>
                             )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0 pb-3 px-3">
-                    <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-                      <div className="flex items-center">
-                        <Users className="w-3 h-3 mr-1" />
-                        <span className="truncate">{brainDump.ownerName}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <Calendar className="w-3 h-3 mr-1" />
-                        <span>
-                          {new Date(brainDump.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Collaborator info - more compact */}
-                    <div className="flex items-center justify-between h-4">
-                      {brainDump.collaboratorCount > 0 ? (
-                        <div className="text-xs text-slate-500">
-                          Shared with {brainDump.collaboratorCount} user
-                          {brainDump.collaboratorCount === 1 ? '' : 's'}
+                            {!brainDump.isOwner && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs px-1 py-0"
+                              >
+                                Shared
+                              </Badge>
+                            )}
+                            {brainDump.isOwner && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    openShareDialog(brainDump)
+                                  }}
+                                  className="p-1 h-5 w-5 text-slate-400 hover:text-slate-600"
+                                >
+                                  <Share className="w-3 h-3" />
+                                </Button>
+                                {brainDump.collaboratorCount > 0 && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      openManageCollaborators(brainDump)
+                                    }}
+                                    className="p-1 h-5 w-5 text-slate-400 hover:text-slate-600"
+                                  >
+                                    <Settings className="w-3 h-3" />
+                                  </Button>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
-                      ) : (
-                        <div></div>
-                      )}
+                      </CardHeader>
+                      <CardContent className="pt-0 pb-3 px-3">
+                        <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                          <div className="flex items-center">
+                            <Users className="w-3 h-3 mr-1" />
+                            <span className="truncate">
+                              {brainDump.ownerName}
+                            </span>
+                          </div>
+                          <div className="flex items-center">
+                            <Calendar className="w-3 h-3 mr-1" />
+                            <span>
+                              {new Date(
+                                brainDump.createdAt
+                              ).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
 
-                      <div className="flex justify-end">
-                        <ArrowRight className="w-3 h-3 text-gray-400" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                        {/* Collaborator info - more compact */}
+                        <div className="flex items-center justify-between h-4">
+                          {brainDump.collaboratorCount > 0 ? (
+                            <div className="text-xs text-slate-500">
+                              Shared with {brainDump.collaboratorCount} user
+                              {brainDump.collaboratorCount === 1 ? '' : 's'}
+                            </div>
+                          ) : (
+                            <div></div>
+                          )}
+
+                          <div className="flex justify-end">
+                            <ArrowRight className="w-3 h-3 text-gray-400" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
                   </Link>
                 </motion.div>
               ))}

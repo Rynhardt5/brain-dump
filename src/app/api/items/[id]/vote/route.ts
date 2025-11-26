@@ -1,9 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { brainDumpItems, brainDumps, brainDumpCollaborators, itemVotes } from '@/lib/db/schema';
-import { eq, or, and } from 'drizzle-orm';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/nextauth';
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import {
+  brainDumpItems,
+  brainDumps,
+  brainDumpCollaborators,
+  itemVotes,
+} from '@/lib/db/schema'
+import { eq, or, and } from 'drizzle-orm'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/nextauth'
+import { triggerBrainDumpEvent } from '@/lib/pusher'
 
 // Vote on an item's priority
 export async function POST(
@@ -11,20 +17,20 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getServerSession(authOptions)
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    
-    const userId = (session.user as any).id;
-    const { id: itemId } = await params;
-    const { priority } = await request.json();
+
+    const userId = (session.user as any).id
+    const { id: itemId } = await params
+    const { priority } = await request.json()
 
     if (!priority || ![1, 2, 3].includes(priority)) {
       return NextResponse.json(
         { error: 'Priority must be 1 (low), 2 (medium), or 3 (high)' },
         { status: 400 }
-      );
+      )
     }
 
     // Check if user has access to vote on this item
@@ -37,7 +43,10 @@ export async function POST(
       })
       .from(brainDumpItems)
       .leftJoin(brainDumps, eq(brainDumpItems.brainDumpId, brainDumps.id))
-      .leftJoin(brainDumpCollaborators, eq(brainDumps.id, brainDumpCollaborators.brainDumpId))
+      .leftJoin(
+        brainDumpCollaborators,
+        eq(brainDumps.id, brainDumpCollaborators.brainDumpId)
+      )
       .where(
         and(
           eq(brainDumpItems.id, itemId),
@@ -49,13 +58,13 @@ export async function POST(
             )
           )
         )
-      );
+      )
 
     if (!item) {
       return NextResponse.json(
         { error: 'Item not found or access denied' },
         { status: 404 }
-      );
+      )
     }
 
     // Insert or update vote
@@ -72,14 +81,59 @@ export async function POST(
           priority,
           votedAt: new Date(),
         },
-      });
+      })
 
-    return NextResponse.json({ message: 'Vote recorded successfully' });
+    // Manually calculate vote statistics (in case triggers aren't set up yet)
+    const voteStats = await db
+      .select({
+        avgPriority: itemVotes.priority,
+        userId: itemVotes.userId,
+      })
+      .from(itemVotes)
+      .where(eq(itemVotes.itemId, itemId))
+
+    const uniqueVoters = new Set(voteStats.map((v) => v.userId)).size
+    const avgPriority =
+      voteStats.reduce((sum, v) => sum + v.avgPriority, 0) / voteStats.length
+
+    // Update the denormalized fields manually
+    await db
+      .update(brainDumpItems)
+      .set({
+        avgVotePriority: avgPriority.toFixed(2),
+        voteCount: uniqueVoters,
+      })
+      .where(eq(brainDumpItems.id, itemId))
+
+    // Get updated item with new vote counts
+    const [updatedItem] = await db
+      .select()
+      .from(brainDumpItems)
+      .where(eq(brainDumpItems.id, itemId))
+
+    // Broadcast vote update in real-time (don't fail if Pusher isn't configured)
+    try {
+      await triggerBrainDumpEvent(item.brainDumpId, {
+        type: 'vote-updated',
+        data: updatedItem,
+      })
+    } catch (pusherError) {
+      console.log(
+        'Real-time update failed (Pusher not configured):',
+        pusherError
+      )
+      // Don't fail the whole request if Pusher isn't set up
+    }
+
+    return NextResponse.json({
+      message: 'Vote recorded successfully',
+      item: updatedItem,
+    })
   } catch (error) {
-    console.error('Error recording vote:', error);
+    console.error('Error recording vote:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
-    );
+    )
   }
 }
