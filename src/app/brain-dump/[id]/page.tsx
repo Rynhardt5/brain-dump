@@ -585,6 +585,33 @@ export default function BrainDumpPage() {
     setInlineDescriptionText('')
   }
 
+  // Auto-resize textarea to fit content
+  const handleDescriptionTextareaResize = (textarea: HTMLTextAreaElement) => {
+    if (textarea) {
+      textarea.style.height = 'auto'
+      textarea.style.height = `${textarea.scrollHeight}px`
+    }
+  }
+
+  // Auto-resize input width to fit content
+  const handleTitleInputResize = (input: HTMLInputElement) => {
+    if (input) {
+      // Create temporary span to measure text width
+      const span = document.createElement('span')
+      span.style.cssText = window.getComputedStyle(input).cssText
+      span.style.position = 'absolute'
+      span.style.visibility = 'hidden'
+      span.style.whiteSpace = 'pre'
+      span.textContent = input.value || input.placeholder
+      document.body.appendChild(span)
+
+      const width = span.offsetWidth + 2 // Add small buffer
+      document.body.removeChild(span)
+
+      input.style.width = `${Math.max(width, 100)}px` // Minimum 100px
+    }
+  }
+
   // Fetch comments for an item
   const fetchComments = async (itemId: string) => {
     setLoadingComments(true)
@@ -1783,7 +1810,10 @@ export default function BrainDumpPage() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleItemSelect(stagingItem.id)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleItemSelect(stagingItem.id)
+                              }}
                               className="p-2 sm:px-3 text-slate-600 hover:bg-slate-50 hover:text-slate-700 relative"
                             >
                               <MessageSquare className="w-4 h-4 sm:mr-2" />
@@ -2094,13 +2124,17 @@ export default function BrainDumpPage() {
                               </div>
                             ) : inlineEditingItem === item.id ? (
                               <Input
+                                ref={(el) => {
+                                  if (el) handleTitleInputResize(el)
+                                }}
                                 value={inlineEditText}
-                                onChange={(e) =>
+                                onChange={(e) => {
                                   handleInlineEditChange(
                                     item.id,
                                     e.target.value
                                   )
-                                }
+                                  handleTitleInputResize(e.target)
+                                }}
                                 onBlur={() =>
                                   saveInlineEdit(item.id, inlineEditText)
                                 }
@@ -2109,7 +2143,7 @@ export default function BrainDumpPage() {
                                     saveInlineEdit(item.id, inlineEditText)
                                   if (e.key === 'Escape') cancelInlineEdit()
                                 }}
-                                className="text-base sm:text-lg font-semibold border-blue-300 focus:ring-blue-500 h-auto py-0 px-0 leading-tight"
+                                className="text-base sm:text-lg font-semibold border-blue-300 focus:ring-blue-500 h-auto py-0 px-0 leading-tight flex-shrink-0"
                                 style={{ minHeight: 'auto' }}
                                 autoFocus
                               />
@@ -2187,7 +2221,10 @@ export default function BrainDumpPage() {
                             </Badge>
                             {/* Comment indicator - Always show */}
                             <button
-                              onClick={() => handleItemSelect(item.id)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleItemSelect(item.id)
+                              }}
                               className="relative p-1"
                             >
                               <MessageSquare className="w-4 h-4 text-blue-600" />
@@ -2243,7 +2280,10 @@ export default function BrainDumpPage() {
                             <Badge
                               variant="outline"
                               className="text-xs bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 cursor-pointer"
-                              onClick={() => handleItemSelect(item.id)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleItemSelect(item.id)
+                              }}
                             >
                               <MessageSquare className="w-3 h-3 mr-1" />
                               {item.commentCount || 0}
@@ -2291,10 +2331,17 @@ export default function BrainDumpPage() {
                                   </h4>
                                   {inlineEditingDescription === item.id ? (
                                     <Textarea
+                                      ref={(el) => {
+                                        if (el)
+                                          handleDescriptionTextareaResize(el)
+                                      }}
                                       value={inlineDescriptionText}
-                                      onChange={(e) =>
+                                      onChange={(e) => {
                                         setInlineDescriptionText(e.target.value)
-                                      }
+                                        handleDescriptionTextareaResize(
+                                          e.target
+                                        )
+                                      }}
                                       onBlur={() =>
                                         saveInlineDescriptionEdit(
                                           item.id,
@@ -2317,8 +2364,11 @@ export default function BrainDumpPage() {
                                           cancelInlineDescriptionEdit()
                                         }
                                       }}
-                                      className="text-sm text-gray-600 whitespace-pre-wrap resize-none border-blue-300 focus:ring-blue-500 rounded p-2 -mx-2 min-h-0"
-                                      style={{ minHeight: 'auto' }}
+                                      className="text-sm text-gray-600 whitespace-pre-wrap resize-none border-blue-300 focus:ring-blue-500 rounded p-2 -mx-2 overflow-hidden"
+                                      style={{
+                                        minHeight: 'auto',
+                                        height: 'auto',
+                                      }}
                                       placeholder="Add description..."
                                       autoFocus
                                     />
